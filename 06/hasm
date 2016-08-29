@@ -185,18 +185,21 @@ def parse_c_instruction(instruction):
             left, jmp = instruction, ""
         return left, JMP_MAP[jmp.strip()]
 
-    def parse_dest_comp(instruction):
+    def parse_dest_comp(instruction, jmp):
 
         if "=" in instruction:
             dest, comp = instruction.split("=")
         else:
-            # Unconditional jump: 0; JMP
-            dest, comp = ("", "0")
+            if jmp == JMP_MAP["JMP"]:
+                # Unconditional jump: 0; JMP
+                dest, comp = ("", "0")
+            else:
+                dest, comp = (instruction, "0")
         return DEST_MAP[dest.strip()], COMP_MAP[comp.strip().replace(" ", "")]
 
     instruction = remove_inline_comment(instruction)
     left, jmp = parse_jmp(instruction)
-    dest, comp = parse_dest_comp(left)
+    dest, comp = parse_dest_comp(left, jmp)
 
     values = {
         "opcode": 1,

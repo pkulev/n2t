@@ -1,0 +1,316 @@
+#!/usr/bin/env python
+
+"""HACK assembler.
+
+Translates HACK Assembly language to HACK machine language.
+"""
+
+import argparse
+import functools
+import re
+import os
+
+
+ARCH_BITS = 16
+INLINE_COMMENT_MARK = "//"
+
+RE_A_TYPE_INSTR   = re.compile(r"^@.*")
+RE_C_TYPE_INSTR   = re.compile(r"^.*=.*|.*;.*")
+RE_COMMENT        = re.compile(r"^\s*//.*")
+RE_INLINE_COMMENT = re.compile(r".*//.*")
+RE_WHITESPACE     = re.compile(r"^\s*$")
+RE_LABEL_DECL     = re.compile(r"^\(.*\)")
+
+A_TYPE_INSTR   = "A TYPE INSTRUCTION"
+C_TYPE_INSTR   = "C TYPE INSTRUCTION"
+COMMENT        = "COMMENTARY"
+INLINE_COMMENT = "INLINE COMMENTARY"
+WHITESPACE     = "WHITESPACE"
+LABEL_DECL     = "LABEL DECLARATION"
+
+TOKENS = {
+    RE_A_TYPE_INSTR:   A_TYPE_INSTR,
+    RE_C_TYPE_INSTR:   C_TYPE_INSTR,
+    RE_COMMENT:        COMMENT,
+    RE_INLINE_COMMENT: INLINE_COMMENT,
+    RE_WHITESPACE:     WHITESPACE,
+    RE_LABEL_DECL:     LABEL_DECL,
+}
+
+BACK_TOKENS = {
+    A_TYPE_INSTR:   RE_A_TYPE_INSTR,
+    C_TYPE_INSTR:   RE_C_TYPE_INSTR,
+    COMMENT:        RE_COMMENT,
+    INLINE_COMMENT: RE_INLINE_COMMENT,
+    WHITESPACE:     RE_WHITESPACE,
+    LABEL_DECL:     RE_LABEL_DECL,
+}
+
+def create_builtins_symbol_table():
+    """Builtin symbol table."""
+
+    BUILTINS_SYMBOL_TABLE = {
+        "SCREEN": a_absolute_address(16384),
+        "KBD":    a_absolute_address(24576),
+        "SP":     a_absolute_address(0),
+        "LCL":    a_absolute_address(1),
+        "ARG":    a_absolute_address(2),
+        "THIS":   a_absolute_address(3),
+        "THAT":   a_absolute_address(4),
+    }
+
+    # First 16 RAM register aliases: R0..R15
+    for i in range(16):
+        BUILTINS_SYMBOL_TABLE["R" + str(i)] = a_absolute_address(i)
+    return BUILTINS_SYMBOL_TABLE
+
+
+def is_type(token, source):
+    """Check token class.
+
+    :param str token: token class
+    :param str source: line of code
+    """
+    return BACK_TOKENS[token].match(source)
+
+
+def a_absolute_address(symbol):
+    return bin(int(symbol))[2:].zfill(ARCH_BITS)
+
+
+def ralloc(symbol_table, start_address=16):
+    free_address = start_address
+    allocated_addresses = symbol_table.values()
+    while True:
+        if free_address in allocated_addresses:
+            free_address += 1
+        else:
+            return free_address
+
+
+def remove_inline_comment(instruction):
+    if is_type(INLINE_COMMENT, instruction):
+        end = instruction.index(INLINE_COMMENT_MARK)
+        return instruction[0:end]
+    else:
+        return instruction
+
+
+def parse_a_instuction(instruction, symbol_table):
+    symbol = remove_inline_comment(instruction[1:])
+    # it's already address
+    if symbol.isdigit():
+        return a_absolute_address(symbol)
+    else:
+        # built-in or created variable
+        if symbol in symbol_table:
+            return symbol_table[symbol]
+        else:
+            # Dirty awwwww...
+            # labels must be uppercased
+            # creating label for future reassigning
+            if symbol.isupper():
+                symbol_table[symbol] = None
+                return symbol
+
+            # new variable or label
+            address = ralloc(symbol_table)
+            symbol_table[symbol] = a_absolute_address(address)
+            print("ALLOC: 16 bytes allocated, address = " + str(address))
+            return a_absolute_address(address)
+
+
+def parse_c_instruction(instruction):
+
+    instruction_template = "{opcode}{reserved}{comp}{dest}{jmp}"
+
+    JMP_MAP = {
+        "":    "000",
+        "JGT": "001",
+        "JEQ": "010",
+        "JGE": "011",
+        "JLT": "100",
+        "JNE": "101",
+        "JLE": "110",
+        "JMP": "111",
+    }
+
+    DEST_MAP = {
+        "":    "000",
+        "M":   "001",
+        "D":   "010",
+        "MD":  "011",
+        "A":   "100",
+        "AM":  "101",
+        "AD":  "110",
+        "AMD": "111",
+    }
+
+    COMP_MAP = {
+        "0":   "0101010",
+        "1":   "0111111",
+        "-1":  "0111010",
+        "D":   "0001100",
+        "A":   "0110000",
+        "!D":  "0001101",
+        "!A":  "0110001",
+        "-D":  "0001111",
+        "-A":  "0110011",
+        "D+1": "0011111",
+        "A+1": "0110111",
+        "D-1": "0001110",
+        "A-1": "0110010",
+        "D+A": "0000010",
+        "D-A": "0010011",
+        "A-D": "0000111",
+        "D&A": "0000000",
+        "D|A": "0010101",
+        "M":   "1110000",
+        "!M":  "1110001",
+        "-M":  "1110011",
+        "M+1": "1110111",
+        "M-1": "1110010",
+        "D+M": "1000010",
+        "D-M": "1010011",
+        "M-D": "1000111",
+        "D&M": "1000000",
+        "D|M": "1010101",
+    }
+
+    def parse_jmp(instruction):
+
+        if ";" in instruction:
+            left, jmp = instruction.split(";")
+        else:
+            left, jmp = instruction, ""
+        return left, JMP_MAP[jmp.strip()]
+
+    def parse_dest_comp(instruction):
+
+        if "=" in instruction:
+            dest, comp = instruction.split("=")
+        else:
+            # Unconditional jump: 0; JMP
+            dest, comp = ("", "0")
+        return DEST_MAP[dest.strip()], COMP_MAP[comp.strip().replace(" ", "")]
+
+    instruction = remove_inline_comment(instruction)
+    left, jmp = parse_jmp(instruction)
+    dest, comp = parse_dest_comp(left)
+
+    values = {
+        "opcode": 1,
+        "reserved": 11,
+        "comp": comp,
+        "dest": dest,
+        "jmp": jmp
+    }
+
+    return instruction_template.format(**values)
+
+
+def process_label_declaration(instruction, lineno, symbol_table):
+    label = remove_inline_comment(instruction)[1:-1]
+
+    if label in symbol_table:
+        current = symbol_table[label]
+        if current is not None:
+            return label, current
+
+    current = a_absolute_address(lineno)
+    symbol_table[label] = current
+    return label, current
+
+
+def coroutine(func):
+    @functools.wraps(func)
+    def _coroutine(*args, **kwargs):
+        gen = func(*args, **kwargs)
+        next(gen)
+        return gen
+    return _coroutine
+
+
+@coroutine
+def reader(source):
+    for line in source:
+        yield line.strip()
+
+
+@coroutine
+def assembler(source):
+    """Produce translated code."""
+
+    lineno = 0
+    symbol_table = create_builtins_symbol_table()
+    translated = []
+
+    for line in source:
+        if is_type(COMMENT, line) or is_type(WHITESPACE, line):
+            # ignore comments and empty lines
+            continue
+        elif is_type(A_TYPE_INSTR, line):
+            result = parse_a_instuction(line, symbol_table)
+        elif is_type(C_TYPE_INSTR, line):
+            result = parse_c_instruction(line)
+        elif is_type(LABEL_DECL, line):
+            label, new_address = process_label_declaration(line, lineno, symbol_table)
+            for item in range(len(translated)):
+                if translated[item] == label:
+                    translated[item] = new_address
+            # no need to increase lineno counter and produce output
+            continue
+        else:
+            result = line
+
+        translated.append(result)
+        lineno += 1
+
+    yield
+    for s in translated:
+        yield s
+
+
+def parse_args():
+    """Parse and return incoming arguments.
+
+    :return: parsed arguments
+    :rtype: argparse.Namespace
+    """
+    parser = argparse.ArgumentParser(description="HACK assembler")
+    parser.add_argument("-o", "--output", help="output file")
+    parser.add_argument("filename", help="input file")
+
+    return parser.parse_args()
+
+
+def prepare_filenames(infile, outfile=None, out_ext="hack"):
+    """Choose out file name if not provided.
+
+    :param str infile: input file name
+    :param str outfile: output file name
+    :param str out_ext: output file extension
+
+    :return: processed file names
+    :rtype: tuple(str, str)
+    """
+    name, ext = os.path.splitext(infile)
+    outfile = ".".join([name, out_ext]) if outfile is None else outfile
+    return infile, outfile
+
+
+def main():
+    """Main entry point."""
+    args = parse_args()
+    infile, outfile = prepare_filenames(args.filename, args.output)
+    machine_code = assembler(reader(open(infile)))
+
+    #with open(infile) as source:
+    #    assembler.send(source.readline().strip())
+    with open(outfile, "w") as target:
+        for line in machine_code:
+            target.write(line + "\n")
+
+
+if __name__ == "__main__":
+    main()

@@ -10,6 +10,7 @@ import functools
 import os
 import re
 import typing
+from typing import Callable, Generator, Tuple
 
 
 ARCH_BITS = 16
@@ -172,7 +173,7 @@ def parse_c_instruction(instruction: str) -> str:
         "D|M": "1010101",
     }
 
-    def parse_jmp(instruction: str) -> tuple(str, str):
+    def parse_jmp(instruction: str) -> Tuple[str, str]:
 
         if ";" in instruction:
             left, jmp = instruction.split(";")
@@ -180,7 +181,7 @@ def parse_c_instruction(instruction: str) -> str:
             left, jmp = instruction, ""
         return left, JMP_MAP[jmp.strip()]
 
-    def parse_dest_comp(instruction: str, jmp: str) -> tuple(str, str):
+    def parse_dest_comp(instruction: str, jmp: str) -> Tuple[str, str]:
 
         if "=" in instruction:
             dest, comp = instruction.split("=")
@@ -209,7 +210,7 @@ def parse_c_instruction(instruction: str) -> str:
 
 def process_label_declaration(
         instruction: str, lineno: int, symbol_table: dict
-    ) -> tuple(str, str):
+) -> Tuple[str, str]:
 
     label = remove_inline_comment(instruction)[1:-1]
 
@@ -223,7 +224,7 @@ def process_label_declaration(
     return label, current
 
 
-def coroutine(func):
+def coroutine(func: Callable) -> Callable:
     @functools.wraps(func)
     def _coroutine(*args, **kwargs):
         gen = func(*args, **kwargs)
@@ -233,13 +234,13 @@ def coroutine(func):
 
 
 @coroutine
-def reader(source):
+def reader(source: Generator) -> str:
     for line in source:
         yield line.strip()
 
 
 @coroutine
-def assembler(source):
+def assembler(source: Generator) -> str:
     """Produce translated code."""
 
     lineno = 0
@@ -272,7 +273,7 @@ def assembler(source):
         yield s
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Parse and return incoming arguments.
 
     :return: parsed arguments
@@ -285,7 +286,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def prepare_filenames(infile, outfile=None, out_ext="hack"):
+def prepare_filenames(
+        infile: str, outfile: str = None, out_ext: str = "hack"
+) -> Tuple[str, str]:
     """Choose out file name if not provided.
 
     :param str infile: input file name

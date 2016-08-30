@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """HACK assembler.
 
@@ -7,17 +7,20 @@ Translates HACK Assembly language to HACK machine language.
 
 import argparse
 import functools
-import re
 import os
+import re
+import typing
 
 
 ARCH_BITS = 16
-INLINE_COMMENT_MARK = "//"
+"""Bits in memory register (word length)."""
+
+COMMENT_SYMBOL = "//"
 
 RE_A_TYPE_INSTR   = re.compile(r"^@.*")
 RE_C_TYPE_INSTR   = re.compile(r"^.*=.*|.*;.*")
-RE_COMMENT        = re.compile(r"^\s*//.*")
-RE_INLINE_COMMENT = re.compile(r".*//.*")
+RE_COMMENT        = re.compile(r"^\s*{0}.*".format(COMMENT_SYMBOL))
+RE_INLINE_COMMENT = re.compile(r".*{0}.*".format(COMMENT_SYMBOL))
 RE_WHITESPACE     = re.compile(r"^\s*$")
 RE_LABEL_DECL     = re.compile(r"^\(.*\)")
 
@@ -29,15 +32,6 @@ WHITESPACE     = "WHITESPACE"
 LABEL_DECL     = "LABEL DECLARATION"
 
 TOKENS = {
-    RE_A_TYPE_INSTR:   A_TYPE_INSTR,
-    RE_C_TYPE_INSTR:   C_TYPE_INSTR,
-    RE_COMMENT:        COMMENT,
-    RE_INLINE_COMMENT: INLINE_COMMENT,
-    RE_WHITESPACE:     WHITESPACE,
-    RE_LABEL_DECL:     LABEL_DECL,
-}
-
-BACK_TOKENS = {
     A_TYPE_INSTR:   RE_A_TYPE_INSTR,
     C_TYPE_INSTR:   RE_C_TYPE_INSTR,
     COMMENT:        RE_COMMENT,
@@ -46,7 +40,7 @@ BACK_TOKENS = {
     LABEL_DECL:     RE_LABEL_DECL,
 }
 
-def create_builtins_symbol_table():
+def create_builtins_symbol_table() -> dict:
     """Builtin symbol table."""
 
     BUILTINS_SYMBOL_TABLE = {
@@ -65,20 +59,21 @@ def create_builtins_symbol_table():
     return BUILTINS_SYMBOL_TABLE
 
 
-def is_type(token, source):
+def is_type(token: str, source: str) -> typing.re:
     """Check token class.
 
     :param str token: token class
     :param str source: line of code
     """
-    return BACK_TOKENS[token].match(source)
+    return TOKENS[token].match(source)
 
 
-def a_absolute_address(symbol):
+def a_absolute_address(symbol: str) -> str:
+    """ """
     return bin(int(symbol))[2:].zfill(ARCH_BITS)
 
 
-def ralloc(symbol_table, start_address=16):
+def ralloc(symbol_table: dict, start_address: int = 16) -> int:
     free_address = start_address
     allocated_addresses = symbol_table.values()
     while True:
@@ -88,15 +83,15 @@ def ralloc(symbol_table, start_address=16):
             return free_address
 
 
-def remove_inline_comment(instruction):
+def remove_inline_comment(instruction: str) -> str:
     if is_type(INLINE_COMMENT, instruction):
-        end = instruction.index(INLINE_COMMENT_MARK)
+        end = instruction.index(COMMENT_SYMBOL)
         return instruction[0:end]
     else:
         return instruction
 
 
-def parse_a_instuction(instruction, symbol_table):
+def parse_a_instuction(instruction: str, symbol_table: dict) -> str:
     symbol = remove_inline_comment(instruction[1:])
     # it's already address
     if symbol.isdigit():
@@ -120,7 +115,7 @@ def parse_a_instuction(instruction, symbol_table):
             return a_absolute_address(address)
 
 
-def parse_c_instruction(instruction):
+def parse_c_instruction(instruction: str) -> str:
 
     instruction_template = "{opcode}{reserved}{comp}{dest}{jmp}"
 
@@ -177,7 +172,7 @@ def parse_c_instruction(instruction):
         "D|M": "1010101",
     }
 
-    def parse_jmp(instruction):
+    def parse_jmp(instruction: str) -> tuple(str, str):
 
         if ";" in instruction:
             left, jmp = instruction.split(";")
@@ -185,7 +180,7 @@ def parse_c_instruction(instruction):
             left, jmp = instruction, ""
         return left, JMP_MAP[jmp.strip()]
 
-    def parse_dest_comp(instruction, jmp):
+    def parse_dest_comp(instruction: str, jmp: str) -> tuple(str, str):
 
         if "=" in instruction:
             dest, comp = instruction.split("=")
@@ -212,7 +207,10 @@ def parse_c_instruction(instruction):
     return instruction_template.format(**values)
 
 
-def process_label_declaration(instruction, lineno, symbol_table):
+def process_label_declaration(
+        instruction: str, lineno: int, symbol_table: dict
+    ) -> tuple(str, str):
+
     label = remove_inline_comment(instruction)[1:-1]
 
     if label in symbol_table:

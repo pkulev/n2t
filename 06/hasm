@@ -12,12 +12,15 @@ import os
 
 
 ARCH_BITS = 16
-INLINE_COMMENT_MARK = "//"
+"""Bits in memory register (word's length)."""
+
+COMMENT_SYMBOL = "//"
+FREE_ADDRESS_SYMBOL = "__SYSTEM::ALLOC::FREE_ADDRESS"
 
 RE_A_TYPE_INSTR   = re.compile(r"^@.*")
 RE_C_TYPE_INSTR   = re.compile(r"^.*=.*|.*;.*")
-RE_COMMENT        = re.compile(r"^\s*//.*")
-RE_INLINE_COMMENT = re.compile(r".*//.*")
+RE_COMMENT        = re.compile(r"^\s*{0}.*".format(COMMENT_SYMBOL))
+RE_INLINE_COMMENT = re.compile(r".*{0}.*".format(COMMENT_SYMBOL))
 RE_WHITESPACE     = re.compile(r"^\s*$")
 RE_LABEL_DECL     = re.compile(r"^\(.*\)")
 
@@ -29,15 +32,6 @@ WHITESPACE     = "WHITESPACE"
 LABEL_DECL     = "LABEL DECLARATION"
 
 TOKENS = {
-    RE_A_TYPE_INSTR:   A_TYPE_INSTR,
-    RE_C_TYPE_INSTR:   C_TYPE_INSTR,
-    RE_COMMENT:        COMMENT,
-    RE_INLINE_COMMENT: INLINE_COMMENT,
-    RE_WHITESPACE:     WHITESPACE,
-    RE_LABEL_DECL:     LABEL_DECL,
-}
-
-BACK_TOKENS = {
     A_TYPE_INSTR:   RE_A_TYPE_INSTR,
     C_TYPE_INSTR:   RE_C_TYPE_INSTR,
     COMMENT:        RE_COMMENT,
@@ -50,19 +44,33 @@ def create_builtins_symbol_table():
     """Builtin symbol table."""
 
     BUILTINS_SYMBOL_TABLE = {
-        "SCREEN": a_absolute_address(16384),
-        "KBD":    a_absolute_address(24576),
-        "SP":     a_absolute_address(0),
-        "LCL":    a_absolute_address(1),
-        "ARG":    a_absolute_address(2),
-        "THIS":   a_absolute_address(3),
-        "THAT":   a_absolute_address(4),
+    # HACK Specification
+        "SCREEN": to_word(16384),
+        "KBD":    to_word(24576),
+        "SP":     to_word(0),
+        "LCL":    to_word(1),
+        "ARG":    to_word(2),
+        "THIS":   to_word(3),
+        "THAT":   to_word(4),
+
+    # Translator-specific
+        FREE_ADDRESS_SYMBOL: 16,
     }
 
     # First 16 RAM register aliases: R0..R15
     for i in range(16):
-        BUILTINS_SYMBOL_TABLE["R" + str(i)] = a_absolute_address(i)
+        BUILTINS_SYMBOL_TABLE["R" + str(i)] = to_word(i)
     return BUILTINS_SYMBOL_TABLE
+
+
+def symbol_table(func):
+    """Wrapper for functions working with symbol_table."""
+    symbol_table = create_builtins_symbol_table()
+
+    @functools.wraps(func)
+    def inner(*args, **kwargs):
+        return func(*args, symbol_table=symbol_table, **kwargs)
+    return inner
 
 
 def is_type(token, source):
@@ -70,37 +78,43 @@ def is_type(token, source):
 
     :param str token: token class
     :param str source: line of code
+
+    :return: re or None
     """
-    return BACK_TOKENS[token].match(source)
+    return TOKENS[token].match(source)
 
 
-def a_absolute_address(symbol):
+def to_word(symbol):
+    """Convert decimal integer to 16 bit binary string representation.
+
+    :param str symbol: assembly language symbol
+
+    :return str: binary representation string
+    """
     return bin(int(symbol))[2:].zfill(ARCH_BITS)
 
 
-def ralloc(symbol_table, start_address=16):
-    free_address = start_address
-    allocated_addresses = symbol_table.values()
-    while True:
-        if free_address in allocated_addresses:
-            free_address += 1
-        else:
-            return free_address
+@symbol_table
+def ralloc(symbol_table):
+    free_address = symbol_table[FREE_ADDRESS_SYMBOL]
+    symbol_table[FREE_ADDRESS_SYMBOL] += 1
+    return free_address
 
 
 def remove_inline_comment(instruction):
     if is_type(INLINE_COMMENT, instruction):
-        end = instruction.index(INLINE_COMMENT_MARK)
+        end = instruction.index(COMMENT_SYMBOL)
         return instruction[0:end]
     else:
         return instruction
 
 
+@symbol_table
 def parse_a_instuction(instruction, symbol_table):
     symbol = remove_inline_comment(instruction[1:])
     # it's already address
     if symbol.isdigit():
-        return a_absolute_address(symbol)
+        return to_word(symbol)
     else:
         # built-in or created variable
         if symbol in symbol_table:
@@ -115,9 +129,9 @@ def parse_a_instuction(instruction, symbol_table):
 
             # new variable or label
             address = ralloc(symbol_table)
-            symbol_table[symbol] = a_absolute_address(address)
+            symbol_table[symbol] = to_word(address)
             print("ALLOC: 16 bytes allocated, address = " + str(address))
-            return a_absolute_address(address)
+            return to_word(address)
 
 
 def parse_c_instruction(instruction):
@@ -212,6 +226,7 @@ def parse_c_instruction(instruction):
     return instruction_template.format(**values)
 
 
+@symbol_table
 def process_label_declaration(instruction, lineno, symbol_table):
     label = remove_inline_comment(instruction)[1:-1]
 
@@ -220,44 +235,43 @@ def process_label_declaration(instruction, lineno, symbol_table):
         if current is not None:
             return label, current
 
-    current = a_absolute_address(lineno)
+    current = to_word(lineno)
     symbol_table[label] = current
     return label, current
 
 
-def coroutine(func):
-    @functools.wraps(func)
-    def _coroutine(*args, **kwargs):
-        gen = func(*args, **kwargs)
-        next(gen)
-        return gen
-    return _coroutine
+def apply_filters(filters, data):
+    return [
+        flt(item) for item in data for flt in filters
+    ]
 
 
-@coroutine
-def reader(source):
-    for line in source:
-        yield line.strip()
+def expand_labels(sources):
+    lineno = 0
+    processed = []
+    for line in sources:
+        if is_type(LABEL_DECL, line):
+            processed.append(process_label_declaration(line))
 
 
-@coroutine
-def assembler(source):
+
+def assembler(sources):
     """Produce translated code."""
 
     lineno = 0
-    symbol_table = create_builtins_symbol_table()
-    translated = []
+    translated = translate(expand_labels(sources))
 
-    for line in source:
+
+    for line in sources:
         if is_type(COMMENT, line) or is_type(WHITESPACE, line):
             # ignore comments and empty lines
             continue
         elif is_type(A_TYPE_INSTR, line):
-            result = parse_a_instuction(line, symbol_table)
+            result = parse_a_instuction(line)
         elif is_type(C_TYPE_INSTR, line):
             result = parse_c_instruction(line)
         elif is_type(LABEL_DECL, line):
-            label, new_address = process_label_declaration(line, lineno, symbol_table)
+            label, new_address = process_label_declaration(line, lineno)
             for item in range(len(translated)):
                 if translated[item] == label:
                     translated[item] = new_address
@@ -269,9 +283,7 @@ def assembler(source):
         translated.append(result)
         lineno += 1
 
-    yield
-    for s in translated:
-        yield s
+    return translated
 
 
 def parse_args():
@@ -306,10 +318,9 @@ def main():
     """Main entry point."""
     args = parse_args()
     infile, outfile = prepare_filenames(args.filename, args.output)
-    machine_code = assembler(reader(open(infile)))
+    with open(infile) as sources:
+        machine_code = assembler(sources.readlines())
 
-    #with open(infile) as source:
-    #    assembler.send(source.readline().strip())
     with open(outfile, "w") as target:
         for line in machine_code:
             target.write(line + "\n")

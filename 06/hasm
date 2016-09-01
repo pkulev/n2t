@@ -240,10 +240,15 @@ def process_label_declaration(instruction, lineno, symbol_table):
     return label, current
 
 
-def apply_filters(filters, data):
-    return [
-        flt(item) for item in data for flt in filters
-    ]
+def apply_functions(functions, data):
+    """Apply functions."""
+    res = []
+    for item in data:
+        for func in functions:
+            item = func(item)
+        res.append(item)
+
+    return res
 
 
 def expand_labels(sources):

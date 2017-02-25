@@ -31,6 +31,14 @@ class ExceededArchRAMLimit(TranslationError):
                 ARCH_BITS, RAM_MAX_ADDRESS, requested_address))
 
 
+class UndeclaredLabel(TranslationError):
+    """Parser met undeclared label."""
+
+    def __init__(self, label):
+        super(TranslationError, self).__init__(
+            "Undeclared label: {0}".format(label))
+
+
 ARCH_BITS = 16
 """Bits in memory register (word's length)."""
 
@@ -155,26 +163,29 @@ def remove_inline_comment(instruction):
 
 @symbol_table
 def parse_a_instuction(instruction, symbol_table):
+    logging.info("Parsing 'A' instruction: %s", instruction)
     symbol = remove_inline_comment(instruction[1:])
+    logging.debug("Got symbol: %s", repr(symbol))
     # it's already address
     if symbol.isdigit():
+        logging.debug("Value is digit, returning '%s'", to_word(symbol))
         return to_word(symbol)
     else:
-        # built-in or created variable
+        # built-in/existing variable or declared label
         if symbol in symbol_table:
+            logging.debug("Value is in symbol table: %s", symbol_table[symbol])
             return symbol_table[symbol]
         else:
-            # Dirty awwwww...
-            # labels must be uppercased
-            # creating label for future reassigning
+        # Just in case of unprocessed label declaration
             if symbol.isupper():
-                symbol_table[symbol] = None
-                return symbol
+                logging.error(pformat(symbol_table))
+                raise UndeclaredLabel(symbol)
 
-            # new variable or label
-            address = ralloc(symbol_table)
+            # new variable
+            address = ralloc()
             symbol_table[symbol] = to_word(address)
-            print("ALLOC: 16 bytes allocated, address = " + str(address))
+            logging.debug(
+                "ALLOC: %s bytes allocated, address = %s", ARCH_BITS, address)
             return to_word(address)
 
 

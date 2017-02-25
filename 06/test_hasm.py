@@ -74,6 +74,25 @@ def test_remove_inline_comment(instruction, result):
     assert hasm.remove_inline_comment(instruction) == result
 
 
+@pytest.mark.parametrize(("instruction", "machine_code", "override"), (
+    ("@0", hasm.to_word(0), None),
+    ("@15 // this is comment", hasm.to_word(15), None),
+    ("@16", hasm.to_word(16), None),
+    ("@variable", hasm.to_word(16), None),
+    ("@LABELNAME", hasm.to_word(20), {"LABELNAME": hasm.to_word(20)}),
+    ("@SCREEN", hasm.to_word(16384), None),
+))
+def test_parse_a_instruction(
+        patch_symbol_table, instruction, machine_code, override
+):
+    if override:
+        patch_symbol_table(override)
+    assert hasm.parse_a_instuction(instruction) == machine_code
+
+
+def test_parse_a_instruction_negative():
+    with pytest.raises(hasm.UndeclaredLabel):
+        hasm.parse_a_instuction("@UNDEFINED")
 
 
 def test_parse_c_instruction():

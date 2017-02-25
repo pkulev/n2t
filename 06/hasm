@@ -10,9 +10,27 @@ import functools
 import re
 import os
 
+class TranslationError(Exception):
+    """Base class for assembler exceptions."""
+
+    def __init__(self, msg):
+        super(TranslationError, self).__init__(msg)
+
+
+class ExceededArchRAMLimit(TranslationError):
+    """Exceeded RAM limitation."""
+
+    def __init__(self, requested_address):
+        super(ExceededArchRAMLimit, self).__init__(
+            "Arch: %s bit, max RAM address: %s, requested address: %s".format(
+                ARCH_BITS, RAM_MAX_ADDRESS, requested_address))
+
 
 ARCH_BITS = 16
 """Bits in memory register (word's length)."""
+
+RAM_MAX_ADDRESS = 2 ** ARCH_BITS - 1
+"""Max address that CPU implementation supports."""
 
 COMMENT_SYMBOL = "//"
 FREE_ADDRESS_SYMBOL = "__SYSTEM::ALLOC::FREE_ADDRESS"
@@ -71,7 +89,7 @@ def create_builtins_symbol_table():
 
     # First 16 RAM register aliases: R0..R15
     for i in range(16):
-        BUILTINS_SYMBOL_TABLE["R" + str(i)] = to_word(i)
+        BUILTINS_SYMBOL_TABLE["R{0}".format(i)] = to_word(i)
     return BUILTINS_SYMBOL_TABLE
 
 
@@ -101,7 +119,16 @@ def is_type(token, source):
 
 @symbol_table
 def ralloc(symbol_table):
+    """Allocate new RAM address.
+
+    :symbol_table: symbol table
+
+    :return int: allocated RAM address
+    """
+
     free_address = symbol_table[FREE_ADDRESS_SYMBOL]
+    if free_address > RAM_MAX_ADDRESS:
+        raise ExceededArchRAMLimit(free_address)
     symbol_table[FREE_ADDRESS_SYMBOL] += 1
     return free_address
 

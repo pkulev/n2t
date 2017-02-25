@@ -52,11 +52,17 @@ def test_to_word_negative():
 
 
 def test_ralloc():
-    pass
+    for addr in range(16, 20):
+        assert hasm.ralloc() == addr
 
 
-def test_remove_inline_comment():
-    pass
+def test_ralloc_negative(patch_symbol_table):
+    # We have only one free address
+    patch_symbol_table({hasm.FREE_ADDRESS_SYMBOL: hasm.RAM_MAX_ADDRESS})
+    assert hasm.ralloc() == hasm.RAM_MAX_ADDRESS
+    # Now we run out of memory
+    with pytest.raises(hasm.ExceededArchRAMLimit):
+        hasm.ralloc()
 
 
 def test_parse_a_instruction():

@@ -346,14 +346,15 @@ def process_label_declarations(sources, symbol_table):
         lineno += 1
     logging.info("Tier I: processing label declarations <--")
 
-def assembler(sources):
-    """Produce translated code."""
 
+def translate(sources):
     lineno = 0
-    translated = translate(expand_labels(sources))
+    translated = []
 
-
+    logging.debug("Tier II -->")
     for line in sources:
+        line = line.strip()
+        logging.debug("Processing line %s:", repr(line))
         if is_type(COMMENT, line) or is_type(WHITESPACE, line):
             # ignore comments and empty lines
             continue
@@ -362,11 +363,7 @@ def assembler(sources):
         elif is_type(C_TYPE_INSTR, line):
             result = parse_c_instruction(line)
         elif is_type(LABEL_DECL, line):
-            label, new_address = process_label_declaration(line, lineno)
-            for item in range(len(translated)):
-                if translated[item] == label:
-                    translated[item] = new_address
-            # no need to increase lineno counter and produce output
+            # already processed, just skip line
             continue
         else:
             result = line
@@ -374,7 +371,15 @@ def assembler(sources):
         translated.append(result)
         lineno += 1
 
+    logging.debug("Tier II <--")
     return translated
+
+
+def assembler(sources):
+    """Produce translated code."""
+
+    process_label_declarations(sources)
+    return translate(sources)
 
 
 def parse_args():

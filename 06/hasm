@@ -134,11 +134,18 @@ def ralloc(symbol_table):
 
 
 def remove_inline_comment(instruction):
+    """Remove comment on single line with instruction.
+
+    :param str instruction: unparsed instruction
+
+    :return str: instruction without inline comment
+    """
+
     if is_type(INLINE_COMMENT, instruction):
         end = instruction.index(COMMENT_SYMBOL)
-        return instruction[0:end]
+        return instruction[0:end].strip()
     else:
-        return instruction
+        return instruction.strip()
 
 
 @symbol_table

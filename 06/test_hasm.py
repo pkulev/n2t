@@ -65,8 +65,15 @@ def test_ralloc_negative(patch_symbol_table):
         hasm.ralloc()
 
 
-def test_parse_a_instruction():
-    pass
+@pytest.mark.parametrize(("instruction", "result"), (
+    ("@LABELNAME  ", "@LABELNAME"),
+    ("@LABELNAME // comm", "@LABELNAME"),
+    ("    //    ", ""),
+))
+def test_remove_inline_comment(instruction, result):
+    assert hasm.remove_inline_comment(instruction) == result
+
+
 
 
 def test_parse_c_instruction():

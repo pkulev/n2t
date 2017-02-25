@@ -7,12 +7,52 @@ Translates HACK Assembly language to HACK machine language.
 
 import argparse
 import functools
+import logging
 import re
 import os
+
+from pprint import pformat
+logging.getLogger().setLevel(logging.DEBUG)
+
+
+class TranslationError(Exception):
+    """Base class for assembler exceptions."""
+
+    def __init__(self, msg):
+        super(TranslationError, self).__init__(msg)
+
+
+class ExceededArchRAMLimit(TranslationError):
+    """Exceeded RAM limitation."""
+
+    def __init__(self, requested_address):
+        super(ExceededArchRAMLimit, self).__init__(
+            "Arch: %s bit, max RAM address: %s, requested address: %s".format(
+                ARCH_BITS, RAM_MAX_ADDRESS, requested_address))
+
+
+class UndeclaredLabel(TranslationError):
+    """Parser met undeclared label."""
+
+    def __init__(self, label):
+        super(TranslationError, self).__init__(
+            "Undeclared label: {0}".format(label))
+
+
+class LabelRedeclarationError(TranslationError):
+    """Parser met already declared label redeclaration."""
+
+    def __init__(self, label, address):
+        super(TranslationError, self).__init__(
+            "Label {0} already was declared with value {1}".format(
+                label, address))
 
 
 ARCH_BITS = 16
 """Bits in memory register (word's length)."""
+
+RAM_MAX_ADDRESS = 2 ** ARCH_BITS - 1
+"""Max address that CPU implementation supports."""
 
 COMMENT_SYMBOL = "//"
 FREE_ADDRESS_SYMBOL = "__SYSTEM::ALLOC::FREE_ADDRESS"
@@ -40,105 +80,13 @@ TOKENS = {
     LABEL_DECL:     RE_LABEL_DECL,
 }
 
-def create_builtins_symbol_table():
-    """Builtin symbol table."""
 
-    BUILTINS_SYMBOL_TABLE = {
-    # HACK Specification
-        "SCREEN": to_word(16384),
-        "KBD":    to_word(24576),
-        "SP":     to_word(0),
-        "LCL":    to_word(1),
-        "ARG":    to_word(2),
-        "THIS":   to_word(3),
-        "THAT":   to_word(4),
+C_JUMP_MAP = "__DECL::INSTR::TYPE_C::JUMP_MAP"
+C_DEST_MAP = "__DECL::INSTR::TYPE_C::DEST_MAP"
+C_COMP_MAP = "__DECL::INSTR::TYPE_C::COMP_MAP"
 
-    # Translator-specific
-        FREE_ADDRESS_SYMBOL: 16,
-    }
-
-    # First 16 RAM register aliases: R0..R15
-    for i in range(16):
-        BUILTINS_SYMBOL_TABLE["R" + str(i)] = to_word(i)
-    return BUILTINS_SYMBOL_TABLE
-
-
-def symbol_table(func):
-    """Wrapper for functions working with symbol_table."""
-    symbol_table = create_builtins_symbol_table()
-
-    @functools.wraps(func)
-    def inner(*args, **kwargs):
-        return func(*args, symbol_table=symbol_table, **kwargs)
-    return inner
-
-
-def is_type(token, source):
-    """Check token class.
-
-    :param str token: token class
-    :param str source: line of code
-
-    :return: re or None
-    """
-    return TOKENS[token].match(source)
-
-
-def to_word(symbol):
-    """Convert decimal integer to 16 bit binary string representation.
-
-    :param str symbol: assembly language symbol
-
-    :return str: binary representation string
-    """
-    return bin(int(symbol))[2:].zfill(ARCH_BITS)
-
-
-@symbol_table
-def ralloc(symbol_table):
-    free_address = symbol_table[FREE_ADDRESS_SYMBOL]
-    symbol_table[FREE_ADDRESS_SYMBOL] += 1
-    return free_address
-
-
-def remove_inline_comment(instruction):
-    if is_type(INLINE_COMMENT, instruction):
-        end = instruction.index(COMMENT_SYMBOL)
-        return instruction[0:end]
-    else:
-        return instruction
-
-
-@symbol_table
-def parse_a_instuction(instruction, symbol_table):
-    symbol = remove_inline_comment(instruction[1:])
-    # it's already address
-    if symbol.isdigit():
-        return to_word(symbol)
-    else:
-        # built-in or created variable
-        if symbol in symbol_table:
-            return symbol_table[symbol]
-        else:
-            # Dirty awwwww...
-            # labels must be uppercased
-            # creating label for future reassigning
-            if symbol.isupper():
-                symbol_table[symbol] = None
-                return symbol
-
-            # new variable or label
-            address = ralloc(symbol_table)
-            symbol_table[symbol] = to_word(address)
-            print("ALLOC: 16 bytes allocated, address = " + str(address))
-            return to_word(address)
-
-
-def parse_c_instruction(instruction):
-
-    instruction_template = "{opcode}{reserved}{comp}{dest}{jmp}"
-
-    JMP_MAP = {
+C_INSTR_SPECS = {
+    C_JUMP_MAP: {
         "":    "000",
         "JGT": "001",
         "JEQ": "010",
@@ -147,9 +95,8 @@ def parse_c_instruction(instruction):
         "JNE": "101",
         "JLE": "110",
         "JMP": "111",
-    }
-
-    DEST_MAP = {
+    },
+    C_DEST_MAP: {
         "":    "000",
         "M":   "001",
         "D":   "010",
@@ -158,9 +105,8 @@ def parse_c_instruction(instruction):
         "AM":  "101",
         "AD":  "110",
         "AMD": "111",
-    }
-
-    COMP_MAP = {
+    },
+    C_COMP_MAP: {
         "0":   "0101010",
         "1":   "0111111",
         "-1":  "0111010",
@@ -189,31 +135,204 @@ def parse_c_instruction(instruction):
         "M-D": "1000111",
         "D&M": "1000000",
         "D|M": "1010101",
+    },
+}
+"""Type C instruction specification mappings."""
+
+
+
+def to_word(symbol):
+    """Convert decimal integer to 16 bit binary string representation.
+
+    :param str symbol: assembly language symbol
+
+    :return str: binary representation string
+    """
+
+    return bin(int(symbol))[2:].zfill(ARCH_BITS)
+
+
+def create_builtins_symbol_table():
+    """Builtin symbol table."""
+
+    BUILTINS_SYMBOL_TABLE = {
+    # HACK Specification
+        "SCREEN": to_word(16384),
+        "KBD":    to_word(24576),
+        "SP":     to_word(0),
+        "LCL":    to_word(1),
+        "ARG":    to_word(2),
+        "THIS":   to_word(3),
+        "THAT":   to_word(4),
+
+    # Translator-specific
+        FREE_ADDRESS_SYMBOL: 16,
     }
 
-    def parse_jmp(instruction):
+    # First 16 RAM register aliases: R0..R15
+    for i in range(16):
+        BUILTINS_SYMBOL_TABLE["R{0}".format(i)] = to_word(i)
+    return BUILTINS_SYMBOL_TABLE
 
+
+_SYMBOL_TABLE = create_builtins_symbol_table()
+"""Symbol table that shared between all processing functions."""
+
+
+def symbol_table(func):
+    """Wrapper for functions working with symbol_table."""
+
+    @functools.wraps(func)
+    def inner(*args, **kwargs):
+        return func(*args, symbol_table=_SYMBOL_TABLE, **kwargs)
+    return inner
+
+
+def is_type(token, source):
+    """Check token class.
+
+    :param str token: token class
+    :param str source: line of code
+
+    :return: re or None
+    """
+    return TOKENS[token].match(source)
+
+
+@symbol_table
+def ralloc(symbol_table):
+    """Allocate new RAM address.
+
+    :symbol_table: symbol table
+
+    :return int: allocated RAM address
+    """
+
+    free_address = symbol_table[FREE_ADDRESS_SYMBOL]
+    if free_address > RAM_MAX_ADDRESS:
+        raise ExceededArchRAMLimit(free_address)
+    symbol_table[FREE_ADDRESS_SYMBOL] += 1
+    return free_address
+
+
+def remove_inline_comment(instruction):
+    """Remove comment on single line with instruction.
+
+    :param str instruction: unparsed instruction
+
+    :return str: instruction without inline comment
+    """
+
+    if is_type(INLINE_COMMENT, instruction):
+        end = instruction.index(COMMENT_SYMBOL)
+        return instruction[0:end].strip()
+    else:
+        return instruction.strip()
+
+
+@symbol_table
+def parse_a_instuction(instruction, symbol_table):
+    """Parse A-type instruction.
+
+    Mnemonics: @<address>|<variable>|<label>
+    Machine: 0<15-bit address>
+    Hardware:
+    * Set register 'A' (Address) to value
+    * Set register 'M' (Memory) to RAM[A] (Indirect, side-effect)
+
+    :param str instruction: incoming A-type instruction
+    :param dict symbol_table: symbol table
+
+    :return str: 15-bit address (0 + address)
+    """
+
+    logging.debug("Parsing 'A' instruction: %s", instruction)
+    symbol = remove_inline_comment(instruction[1:])
+    logging.debug("Got symbol: %s", repr(symbol))
+    # it's already address
+    if symbol.isdigit():
+        logging.debug("Value is digit, returning '%s'", to_word(symbol))
+        return to_word(symbol)
+    else:
+        # built-in/existing variable or declared label
+        if symbol in symbol_table:
+            logging.debug("Value is in symbol table: %s", symbol_table[symbol])
+            return symbol_table[symbol]
+        else:
+        # Just in case of unprocessed label declaration
+            if symbol.isupper():
+                logging.error(pformat(symbol_table))
+                raise UndeclaredLabel(symbol)
+
+            # new variable
+            address = ralloc()
+            symbol_table[symbol] = to_word(address)
+            logging.debug(
+                "ALLOC: %s bytes allocated, address = %s", ARCH_BITS, address)
+            return to_word(address)
+
+
+def parse_c_instruction(instruction):
+    """Parse C-type instruction.
+
+    Mnemonics: [<dest>=<comp>]|0;<jmp>
+    Machine: 111<comp-bits><dest-bits><jmp-bits>
+    Hardware:
+    * do the computation for <comp>
+    * store result in <dest> (and-or A M D)
+    * compare with <jmp> and jump to ROM[A] code address
+
+    :param str instruction: incoming C-type instruction
+
+    :return str: instruction machine code
+    """
+
+    instruction_template = "{opcode}{reserved}{comp}{dest}{jmp}"
+
+    def parse_jmp(instruction):
+        """JMP subparser."""
+
+        logging.debug("Parsing JMP: %s", instruction)
         if ";" in instruction:
             left, jmp = instruction.split(";")
+            logging.debug("Got ';', left, jmp = '%s', '%s'", left, jmp)
         else:
             left, jmp = instruction, ""
-        return left, JMP_MAP[jmp.strip()]
+            logging.debug("No ';' found, left, jmp = '%s', '%s'", left, jmp)
+        return left, C_INSTR_SPECS[C_JUMP_MAP][jmp.strip()]
 
     def parse_dest_comp(instruction, jmp):
+        """DEST-COMP subparser."""
 
+        logging.debug("Parsing DEST&COMP: %s", instruction)
         if "=" in instruction:
             dest, comp = instruction.split("=")
+            logging.debug("Got '=', dest, comp = '%s', '%s'", dest, comp)
         else:
-            if jmp == JMP_MAP["JMP"]:
+            logging.debug("No '=' found.")
+            if jmp == C_INSTR_SPECS[C_JUMP_MAP]["JMP"]:
                 # Unconditional jump: 0; JMP
                 dest, comp = ("", "0")
+                logging.debug(
+                    "Unconditional jump. dest, comp = '%s', '%s'", dest, comp)
             else:
-                dest, comp = (instruction, "0")
-        return DEST_MAP[dest.strip()], COMP_MAP[comp.strip().replace(" ", "")]
+                dest, comp = ("", instruction)
+                logging.debug(
+                    "Conditional jump. dest, comp = '%s', '%s'", dest, comp)
 
+        return (
+            C_INSTR_SPECS[C_DEST_MAP][dest.strip()],
+            C_INSTR_SPECS[C_COMP_MAP][comp.strip().replace(" ", "")]
+        )
+
+    logging.debug("Parsing C-type instruction: %s", repr(instruction))
     instruction = remove_inline_comment(instruction)
+    logging.debug("Source: %s", instruction)
+
     left, jmp = parse_jmp(instruction)
     dest, comp = parse_dest_comp(left, jmp)
+    logging.debug("Parsed comp: %s, dest: %s, jmp: %s", comp, dest, jmp)
+    logging.debug("Resulting: 111%s%s%s", comp, dest, jmp)
 
     values = {
         "opcode": 1,
@@ -226,22 +345,14 @@ def parse_c_instruction(instruction):
     return instruction_template.format(**values)
 
 
-@symbol_table
-def process_label_declaration(instruction, lineno, symbol_table):
-    label = remove_inline_comment(instruction)[1:-1]
-
-    if label in symbol_table:
-        current = symbol_table[label]
-        if current is not None:
-            return label, current
-
-    current = to_word(lineno)
-    symbol_table[label] = current
-    return label, current
-
-
 def apply_functions(functions, data):
-    """Apply functions."""
+    """Apply functions.
+
+    :param collections.Iterable functions: collection of functions to apply
+    :param collections.Iterable data: collection of data apply to
+
+    :return list: results"""
+
     res = []
     for item in data:
         for func in functions:
@@ -251,23 +362,54 @@ def apply_functions(functions, data):
     return res
 
 
-def expand_labels(sources):
+@symbol_table
+def process_label_declarations(sources, symbol_table):
+    """Tier I of translation: processing label declaraions.
+
+    On every label declaration register it with symbol table.
+    On Tier II of translation values of labels will be inserted to right place.
+
+    :param collections.Iterable sources: raw source code
+    """
+
+    logging.info("Tier I: processing label declarations -->")
     lineno = 0
-    processed = []
     for line in sources:
+        if is_type(COMMENT, line) or is_type(WHITESPACE, line):
+            continue
+
         if is_type(LABEL_DECL, line):
-            processed.append(process_label_declaration(line))
+            logging.debug("Got declaration: %s", repr(line))
+            # remove comment and then braces: (LABEL) //1 -> LABEL
+            label = remove_inline_comment(line).strip()[1:-1]
+            logging.debug("Label name: %s", label)
+
+            # As labels and variables have different letter case we can use
+            # symbol table to store processed labels as ROM addresses
+            if label in symbol_table:
+                logging.error(pformat(symbol_table))
+                raise LabelRedeclarationError(label, symbol_table["label"])
+            else:
+                symbol_table[label] = to_word(lineno)
+                logging.debug(
+                    "Label wrote to symbol table: %s -> %s",
+                    label, symbol_table[label])
+
+            # Don't update lineno
+            continue
+
+        lineno += 1
+    logging.info("Tier I: processing label declarations <--")
 
 
-
-def assembler(sources):
-    """Produce translated code."""
-
+def translate(sources):
     lineno = 0
-    translated = translate(expand_labels(sources))
+    translated = []
 
-
+    logging.info("Tier II: translating asm to machine code -->")
     for line in sources:
+        line = line.strip()
+        logging.debug("Processing line %s:", repr(line))
         if is_type(COMMENT, line) or is_type(WHITESPACE, line):
             # ignore comments and empty lines
             continue
@@ -276,11 +418,7 @@ def assembler(sources):
         elif is_type(C_TYPE_INSTR, line):
             result = parse_c_instruction(line)
         elif is_type(LABEL_DECL, line):
-            label, new_address = process_label_declaration(line, lineno)
-            for item in range(len(translated)):
-                if translated[item] == label:
-                    translated[item] = new_address
-            # no need to increase lineno counter and produce output
+            # already processed, just skip line
             continue
         else:
             result = line
@@ -288,7 +426,15 @@ def assembler(sources):
         translated.append(result)
         lineno += 1
 
+    logging.info("Tier II: translating asm to machine code <--")
     return translated
+
+
+def assembler(sources):
+    """Produce translated code."""
+
+    process_label_declarations(sources)
+    return translate(sources)
 
 
 def parse_args():
@@ -298,6 +444,7 @@ def parse_args():
     :rtype: argparse.Namespace
     """
     parser = argparse.ArgumentParser(description="HACK assembler")
+    parser.add_argument("-d", "--debug", action="store_true", help="Debug mode")
     parser.add_argument("-o", "--output", help="output file")
     parser.add_argument("filename", help="input file")
 
@@ -321,10 +468,20 @@ def prepare_filenames(infile, outfile=None, out_ext="hack"):
 
 def main():
     """Main entry point."""
+
     args = parse_args()
+    logging.getLogger().setLevel(logging.DEBUG if args.debug else logging.INFO)
+    logging.debug("Incoming args: %s", args)
     infile, outfile = prepare_filenames(args.filename, args.output)
+    logging.debug("Read from: '%s', write to: '%s'", infile, outfile)
     with open(infile) as sources:
         machine_code = assembler(sources.readlines())
+
+    logging.debug("Resulting machine code -->")
+    if args.debug:
+        for line in machine_code:
+            logging.debug(line)
+    logging.debug("Resulting machine code <--")
 
     with open(outfile, "w") as target:
         for line in machine_code:

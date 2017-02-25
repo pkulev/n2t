@@ -232,6 +232,20 @@ def remove_inline_comment(instruction):
 
 @symbol_table
 def parse_a_instuction(instruction, symbol_table):
+    """Parse A-type instruction.
+
+    Mnemonics: @<address>|<variable>|<label>
+    Machine: 0<15-bit address>
+    Hardware:
+    * Set register 'A' (Address) to value
+    * Set register 'M' (Memory) to RAM[A] (Indirect, side-effect)
+
+    :param str instruction: incoming A-type instruction
+    :param dict symbol_table: symbol table
+
+    :return str: 15-bit address (0 + address)
+    """
+
     logging.info("Parsing 'A' instruction: %s", instruction)
     symbol = remove_inline_comment(instruction[1:])
     logging.debug("Got symbol: %s", repr(symbol))

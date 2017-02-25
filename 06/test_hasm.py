@@ -115,8 +115,13 @@ def test_parse_args():
     pass
 
 
-def test_prepare_filenames():
-    pass
+@pytest.mark.parametrize(("args", "result"), (
+    (("test.asm",), ("test.asm", "test.hack")),
+    (("test.asm", "newfile"), ("test.asm", "newfile")),
+    (("test.asm", None, "kek"), ("test.asm", "test.kek")),
+))
+def test_prepare_filenames(args, result):
+    assert hasm.prepare_filenames(*args) == result
 
 
 def test_main():

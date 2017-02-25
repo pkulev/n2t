@@ -32,8 +32,26 @@ def test_symbol_table():
     pass
 
 
-def test_is_type():
-    pass
+@pytest.mark.parametrize(("typ", "value"), (
+    (hasm.COMMENT, "// this is comment"),
+    (hasm.COMMENT, "    //this is comment"),
+    (hasm.WHITESPACE, "   "),
+    (hasm.WHITESPACE, ""),
+    (hasm.WHITESPACE, "\t"),
+    (hasm.INLINE_COMMENT, "@15 // comment"),
+    (hasm.INLINE_COMMENT, "@15//comment"),
+    (hasm.A_TYPE_INSTR, "@15"),
+    (hasm.A_TYPE_INSTR, "@variable"),
+    (hasm.A_TYPE_INSTR, "@LABEL"),
+    (hasm.C_TYPE_INSTR, "0; JMP // jump"),
+    (hasm.C_TYPE_INSTR, "0  ;   JMP // jump too"),
+    (hasm.C_TYPE_INSTR, "AMD=M+1; JGE"),
+    (hasm.LABEL_DECL, "(THIS_IS_LABEL) // lab1"),
+    (hasm.LABEL_DECL, "(THIS IS LABEL TOO?) // lab2"),
+    (hasm.LABEL_DECL, "()"),
+))
+def test_is_type(typ, value):
+    assert hasm.is_type(typ, value)
 
 
 @pytest.mark.parametrize(("symbol", "expected"), (
@@ -99,11 +117,7 @@ def test_parse_c_instruction():
     pass
 
 
-def test_process_label_declaration():
-    pass
-
-
-def test_expand_labels():
+def test_process_label_declarations():
     pass
 
 

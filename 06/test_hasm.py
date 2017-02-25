@@ -9,6 +9,20 @@ import pytest
 hasm = imp.load_source("hasm", "./hasm")  # noqa
 
 
+@pytest.fixture
+def patch_symbol_table(request, scope="function"):
+
+    def _patcher(override):
+        hasm._SYMBOL_TABLE.update(override)
+
+    def _fin():
+        hasm._SYMBOL_TABLE = hasm.create_builtins_symbol_table()
+
+    request.addfinalizer(_fin)
+
+    return _patcher
+
+
 def test_create_builtins_symbol_table():
 
     assert isinstance(hasm.create_builtins_symbol_table(), MutableMapping)

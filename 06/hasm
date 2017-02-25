@@ -296,7 +296,7 @@ def parse_c_instruction(instruction):
             left, jmp = instruction.split(";")
         else:
             left, jmp = instruction, ""
-        return left, C_INSTR_SPECS[C_JUMP_MAP[jmp.strip()]]
+        return left, C_INSTR_SPECS[C_JUMP_MAP][jmp.strip()]
 
     def parse_dest_comp(instruction, jmp):
         """DEST-COMP subparser."""
@@ -304,14 +304,14 @@ def parse_c_instruction(instruction):
         if "=" in instruction:
             dest, comp = instruction.split("=")
         else:
-            if jmp == C_INSTR_SPECS[C_JUMP_MAP["JMP"]]:
+            if jmp == C_INSTR_SPECS[C_JUMP_MAP]["JMP"]:
                 # Unconditional jump: 0; JMP
                 dest, comp = ("", "0")
             else:
                 dest, comp = (instruction, "0")
         return (
-            C_INSTR_SPECS[C_DEST_MAP[dest.strip()]],
-            C_INSTR_SPECS[C_COMP_MAP[comp.strip().replace(" ", "")]]
+            C_INSTR_SPECS[C_DEST_MAP][dest.strip()],
+            C_INSTR_SPECS[C_COMP_MAP][comp.strip().replace(" ", "")]
         )
 
     instruction = remove_inline_comment(instruction)

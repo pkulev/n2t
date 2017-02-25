@@ -246,7 +246,7 @@ def parse_a_instuction(instruction, symbol_table):
     :return str: 15-bit address (0 + address)
     """
 
-    logging.info("Parsing 'A' instruction: %s", instruction)
+    logging.debug("Parsing 'A' instruction: %s", instruction)
     symbol = remove_inline_comment(instruction[1:])
     logging.debug("Got symbol: %s", repr(symbol))
     # it's already address
@@ -390,7 +390,7 @@ def translate(sources):
     lineno = 0
     translated = []
 
-    logging.debug("Tier II -->")
+    logging.info("Tier II: translating asm to machine code -->")
     for line in sources:
         line = line.strip()
         logging.debug("Processing line %s:", repr(line))
@@ -410,7 +410,7 @@ def translate(sources):
         translated.append(result)
         lineno += 1
 
-    logging.debug("Tier II <--")
+    logging.info("Tier II: translating asm to machine code <--")
     return translated
 
 

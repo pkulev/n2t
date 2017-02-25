@@ -46,6 +46,11 @@ def test_to_word(symbol, expected):
     assert hasm.to_word(symbol) == expected
 
 
+def test_to_word_negative():
+    with pytest.raises(ValueError):
+        hasm.to_word("test")
+
+
 def test_ralloc():
     pass
 

@@ -40,6 +40,18 @@ TOKENS = {
     LABEL_DECL:     RE_LABEL_DECL,
 }
 
+
+def to_word(symbol):
+    """Convert decimal integer to 16 bit binary string representation.
+
+    :param str symbol: assembly language symbol
+
+    :return str: binary representation string
+    """
+
+    return bin(int(symbol))[2:].zfill(ARCH_BITS)
+
+
 def create_builtins_symbol_table():
     """Builtin symbol table."""
 
@@ -63,13 +75,16 @@ def create_builtins_symbol_table():
     return BUILTINS_SYMBOL_TABLE
 
 
+_SYMBOL_TABLE = create_builtins_symbol_table()
+"""Symbol table that shared between all processing functions."""
+
+
 def symbol_table(func):
     """Wrapper for functions working with symbol_table."""
-    symbol_table = create_builtins_symbol_table()
 
     @functools.wraps(func)
     def inner(*args, **kwargs):
-        return func(*args, symbol_table=symbol_table, **kwargs)
+        return func(*args, symbol_table=_SYMBOL_TABLE, **kwargs)
     return inner
 
 
@@ -82,16 +97,6 @@ def is_type(token, source):
     :return: re or None
     """
     return TOKENS[token].match(source)
-
-
-def to_word(symbol):
-    """Convert decimal integer to 16 bit binary string representation.
-
-    :param str symbol: assembly language symbol
-
-    :return str: binary representation string
-    """
-    return bin(int(symbol))[2:].zfill(ARCH_BITS)
 
 
 @symbol_table

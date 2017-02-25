@@ -94,7 +94,7 @@ def test_remove_inline_comment(instruction, result):
 
 @pytest.mark.parametrize(("instruction", "machine_code", "override"), (
     ("@0", hasm.to_word(0), None),
-    ("@15 // this is comment", hasm.to_word(15), None),
+    ("@15", hasm.to_word(15), None),
     ("@16", hasm.to_word(16), None),
     ("@variable", hasm.to_word(16), None),
     ("@LABELNAME", hasm.to_word(20), {"LABELNAME": hasm.to_word(20)}),
@@ -114,9 +114,9 @@ def test_parse_a_instruction_negative():
 
 
 @pytest.mark.parametrize(("instruction", "machine_code"), (
-    ("0; JMP // ", "1110101010000111"),
+    ("0; JMP", "1110101010000111"),
     ("M = -1", "1110111010001000"),
-    ("M =M+ 1//", "1111110111001000"),
+    ("M =M+ 1", "1111110111001000"),
     ("AMD   = D", "1110001100111000"),
 ))
 def test_parse_c_instruction(instruction, machine_code):

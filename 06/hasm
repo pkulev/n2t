@@ -39,6 +39,15 @@ class UndeclaredLabel(TranslationError):
             "Undeclared label: {0}".format(label))
 
 
+class LabelRedeclarationError(TranslationError):
+    """Parser met already declared label redeclaration."""
+
+    def __init__(self, label, address):
+        super(TranslationError, self).__init__(
+            "Label {0} already was declared with value {1}".format(
+                label, address))
+
+
 ARCH_BITS = 16
 """Bits in memory register (word's length)."""
 
@@ -281,22 +290,14 @@ def parse_c_instruction(instruction):
     return instruction_template.format(**values)
 
 
-@symbol_table
-def process_label_declaration(instruction, lineno, symbol_table):
-    label = remove_inline_comment(instruction)[1:-1]
-
-    if label in symbol_table:
-        current = symbol_table[label]
-        if current is not None:
-            return label, current
-
-    current = to_word(lineno)
-    symbol_table[label] = current
-    return label, current
-
-
 def apply_functions(functions, data):
-    """Apply functions."""
+    """Apply functions.
+
+    :param collections.Iterable functions: collection of functions to apply
+    :param collections.Iterable data: collection of data apply to
+
+    :return list: results"""
+
     res = []
     for item in data:
         for func in functions:
@@ -306,14 +307,44 @@ def apply_functions(functions, data):
     return res
 
 
-def expand_labels(sources):
+@symbol_table
+def process_label_declarations(sources, symbol_table):
+    """Tier I of translation: processing label declaraions.
+
+    On every label declaration register it with symbol table.
+    On Tier II of translation values of labels will be inserted to right place.
+
+    :param collections.Iterable sources: raw source code
+    """
+
+    logging.info("Tier I: processing label declarations -->")
     lineno = 0
-    processed = []
     for line in sources:
+        if is_type(COMMENT, line) or is_type(WHITESPACE, line):
+            continue
+
         if is_type(LABEL_DECL, line):
-            processed.append(process_label_declaration(line))
+            logging.debug("Got declaration: %s", repr(line))
+            # remove comment and then braces: (LABEL) //1 -> LABEL
+            label = remove_inline_comment(line).strip()[1:-1]
+            logging.debug("Label name: %s", label)
 
+            # As labels and variables have different letter case we can use
+            # symbol table to store processed labels as ROM addresses
+            if label in symbol_table:
+                logging.error(pformat(symbol_table))
+                raise LabelRedeclarationError(label, symbol_table["label"])
+            else:
+                symbol_table[label] = to_word(lineno)
+                logging.debug(
+                    "Label wrote to symbol table: %s -> %s",
+                    label, symbol_table[label])
 
+            # Don't update lineno
+            continue
+
+        lineno += 1
+    logging.info("Tier I: processing label declarations <--")
 
 def assembler(sources):
     """Produce translated code."""

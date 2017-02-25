@@ -7,8 +7,13 @@ Translates HACK Assembly language to HACK machine language.
 
 import argparse
 import functools
+import logging
 import re
 import os
+
+from pprint import pformat
+logging.getLogger().setLevel(logging.DEBUG)
+
 
 class TranslationError(Exception):
     """Base class for assembler exceptions."""
@@ -337,6 +342,7 @@ def parse_args():
     :rtype: argparse.Namespace
     """
     parser = argparse.ArgumentParser(description="HACK assembler")
+    parser.add_argument("-d", "--debug", action="store_true", help="Debug mode")
     parser.add_argument("-o", "--output", help="output file")
     parser.add_argument("filename", help="input file")
 
@@ -360,10 +366,20 @@ def prepare_filenames(infile, outfile=None, out_ext="hack"):
 
 def main():
     """Main entry point."""
+
     args = parse_args()
+    logging.getLogger().setLevel(logging.DEBUG if args.debug else logging.INFO)
+    logging.debug("Incoming args: %s", args)
     infile, outfile = prepare_filenames(args.filename, args.output)
+    logging.debug("Read from: '%s', write to: '%s'", infile, outfile)
     with open(infile) as sources:
         machine_code = assembler(sources.readlines())
+
+    logging.debug("Resulting machine code -->")
+    if args.debug:
+        for line in machine_code:
+            logging.debug(line)
+    logging.debug("Resulting machine code <--")
 
     with open(outfile, "w") as target:
         for line in machine_code:

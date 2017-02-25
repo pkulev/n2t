@@ -28,10 +28,6 @@ def test_create_builtins_symbol_table():
     assert isinstance(hasm.create_builtins_symbol_table(), MutableMapping)
 
 
-def test_symbol_table():
-    pass
-
-
 @pytest.mark.parametrize(("typ", "value"), (
     (hasm.COMMENT, "// this is comment"),
     (hasm.COMMENT, "    //this is comment"),
@@ -124,18 +120,6 @@ def test_parse_c_instruction(instruction, machine_code):
     assert hasm.parse_c_instruction(instruction) == machine_code
 
 
-def test_process_label_declarations():
-    pass
-
-
-def test_assembler():
-    pass
-
-
-def test_parse_args():
-    pass
-
-
 @pytest.mark.parametrize(("args", "result"), (
     (("test.asm",), ("test.asm", "test.hack")),
     (("test.asm", "newfile"), ("test.asm", "newfile")),
@@ -143,20 +127,3 @@ def test_parse_args():
 ))
 def test_prepare_filenames(args, result):
     assert hasm.prepare_filenames(*args) == result
-
-
-def test_main():
-    pass
-
-
-@pytest.mark.parametrize(("functions", "data", "expected"), (
-    ([], [], []),
-    ([lambda x: x + 1], list(range(0, 5)), list(range(1, 6))),
-    (
-        [lambda x: x + 1, lambda x: x * 2],
-        list(range(0, 5)), list(range(2, 12, 2))
-    ),
-))
-def test_apply_functions(functions, data, expected):
-
-    assert hasm.apply_functions(functions, data) == expected

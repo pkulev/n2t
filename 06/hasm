@@ -343,23 +343,6 @@ def parse_c_instruction(instruction):
     return instruction_template.format(**values)
 
 
-def apply_functions(functions, data):
-    """Apply functions.
-
-    :param collections.Iterable functions: collection of functions to apply
-    :param collections.Iterable data: collection of data apply to
-
-    :return list: results"""
-
-    res = []
-    for item in data:
-        for func in functions:
-            item = func(item)
-        res.append(item)
-
-    return res
-
-
 @symbol_table
 def process_label_declarations(sources, symbol_table):
     """Tier I of translation: processing label declaraions.

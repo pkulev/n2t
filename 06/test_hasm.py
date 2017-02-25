@@ -113,8 +113,15 @@ def test_parse_a_instruction_negative():
         hasm.parse_a_instuction("@UNDEFINED")
 
 
-def test_parse_c_instruction():
-    pass
+@pytest.mark.parametrize(("instruction", "machine_code"), (
+    ("0; JMP // ", "1110101010000111"),
+    ("M = -1", "1110111010001000"),
+    ("M =M+ 1//", "1111110111001000"),
+    ("AMD   = D", "1110001100111000"),
+))
+def test_parse_c_instruction(instruction, machine_code):
+    # Slighty redunant test, all cases are covered by functional tests
+    assert hasm.parse_c_instruction(instruction) == machine_code
 
 
 def test_process_label_declarations():

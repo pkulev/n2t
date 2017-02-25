@@ -292,31 +292,47 @@ def parse_c_instruction(instruction):
     def parse_jmp(instruction):
         """JMP subparser."""
 
+        logging.debug("Parsing JMP: %s", instruction)
         if ";" in instruction:
             left, jmp = instruction.split(";")
+            logging.debug("Got ';', left, jmp = '%s', '%s'", left, jmp)
         else:
             left, jmp = instruction, ""
+            logging.debug("No ';' found, left, jmp = '%s', '%s'", left, jmp)
         return left, C_INSTR_SPECS[C_JUMP_MAP][jmp.strip()]
 
     def parse_dest_comp(instruction, jmp):
         """DEST-COMP subparser."""
 
+        logging.debug("Parsing DEST&COMP: %s", instruction)
         if "=" in instruction:
             dest, comp = instruction.split("=")
+            logging.debug("Got '=', dest, comp = '%s', '%s'", dest, comp)
         else:
+            logging.debug("No '=' found.")
             if jmp == C_INSTR_SPECS[C_JUMP_MAP]["JMP"]:
                 # Unconditional jump: 0; JMP
                 dest, comp = ("", "0")
+                logging.debug(
+                    "Unconditional jump. dest, comp = '%s', '%s'", dest, comp)
             else:
-                dest, comp = (instruction, "0")
+                dest, comp = ("", instruction)
+                logging.debug(
+                    "Conditional jump. dest, comp = '%s', '%s'", dest, comp)
+
         return (
             C_INSTR_SPECS[C_DEST_MAP][dest.strip()],
             C_INSTR_SPECS[C_COMP_MAP][comp.strip().replace(" ", "")]
         )
 
+    logging.debug("Parsing C-type instruction: %s", repr(instruction))
     instruction = remove_inline_comment(instruction)
+    logging.debug("Source: %s", instruction)
+
     left, jmp = parse_jmp(instruction)
     dest, comp = parse_dest_comp(left, jmp)
+    logging.debug("Parsed comp: %s, dest: %s, jmp: %s", comp, dest, jmp)
+    logging.debug("Resulting: 111%s%s%s", comp, dest, jmp)
 
     values = {
         "opcode": 1,

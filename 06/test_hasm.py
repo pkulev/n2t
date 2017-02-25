@@ -126,7 +126,10 @@ def test_main():
 @pytest.mark.parametrize(("functions", "data", "expected"), (
     ([], [], []),
     ([lambda x: x + 1], list(range(0, 5)), list(range(1, 6))),
-    ([lambda x: x + 1, lambda x: x * 2], range(0, 5), range(2, 12, 2)),
+    (
+        [lambda x: x + 1, lambda x: x * 2],
+        list(range(0, 5)), list(range(2, 12, 2))
+    ),
 ))
 def test_apply_functions(functions, data, expected):
 

@@ -51,26 +51,45 @@ class UnsupportedInstructionError(TranslationError):
 COMMENT_SYMBOL = "//"
 FREE_ADDRESS_SYMBOL = "__SYSTEM::ALLOC::FREE_ADDRESS"
 
+# Arithmetic commands
 PUSH = "push"
-POP = "pop"
-ADD = "add"
-SUB = "sub"
-NEG = "neg"
-EQ = "eq"
-GT = "gt"
-LT = "lt"
-AND = "and"
-OR = "or"
-NOT = "not"
+POP  = "pop"
+ADD  = "add"
+SUB  = "sub"
+NEG  = "neg"
+EQ   = "eq"
+GT   = "gt"
+LT   = "lt"
+AND  = "and"
+OR   = "or"
+NOT  = "not"
 
-STATIC="static"
-THIS="this"
-LOCAL="local"
-ARGUMENT="argument"
-THAT="that"
-CONSTANT="constant"
-POINTER="pointer"
-TEMP="temp"
+STATIC   = "static"
+LOCAL    = "local"
+ARGUMENT = "argument"
+THIS     = "this"
+THAT     = "that"
+CONSTANT = "constant"
+POINTER  = "pointer"
+TEMP     = "temp"
+
+COMMENT        = "commentary"
+INLINE_COMMENT = "inline commentary"
+WHITESPACE     = "whitespace"
+
+# Program flow commands
+LABEL   = "label"
+GOTO    = "goto"
+IF_GOTO = "if-goto"
+
+# Function instructions
+CALL     = "call"
+RETURN   = "return"
+FUNCTION = "function"
+
+SYS_INIT = "Sys.init"
+"""Program bootstrapper."""
+
 
 ARITHMETIC_INSTRUCTIONS = (
     # arithmetic
@@ -91,42 +110,56 @@ MEMORY_INSTRUCTIONS = (
     POP
 )
 
+PROGRAM_FLOW_INSTRUCTIONS = (
+    LABEL,
+    GOTO,
+    IF_GOTO,
+)
+
+FUNCTION_INSTRUCTIONS = (
+    CALL,
+    RETURN,
+    FUNCTION,
+)
+
+
 RE_COMMENT          = re.compile(r"^\s*{0}.*".format(COMMENT_SYMBOL))
 RE_INLINE_COMMENT   = re.compile(r".*{0}.*".format(COMMENT_SYMBOL))
 RE_PUSH_INSTR       = re.compile(r"^push.*")
-RE_POP_INSTR        = re.compile(r"^pop/*")
+RE_POP_INSTR        = re.compile(r"^pop.*")
 RE_WHITESPACE       = re.compile(r"^\s*$")
-RE_LABEL_DECL       = re.compile(r"^\(.*\)")
+RE_LABEL            = re.compile(r"^label.*")
+RE_GOTO             = re.compile(r"^goto.*")
+RE_IF_GOTO          = re.compile("^if-goto.*")
 RE_ARITHMETIC_INSTR = re.compile(
     r"^{0}.*".format("|".join(ARITHMETIC_INSTRUCTIONS)))
-
-PUSH_INSTR = "VM PUSH COMMAND"
-POP_INSTR = "VM POP COMMAND"
-ARITHMETIC_INSTR = "VM ARITHMETIC COMMAND"
-COMMENT        = "COMMENTARY"
-INLINE_COMMENT = "INLINE COMMENTARY"
-WHITESPACE     = "WHITESPACE"
-LABEL_DECL     = "LABEL DECLARATION"
 
 
 ArithmeticInstruction = collections.namedtuple(
     "ArithmeticInstruction", ["command"])
 
 MemoryInstruction = collections.namedtuple(
-    "MemoryInstruction", [
-        "command",
-        "segment",
-        "index"])
+    "MemoryInstruction", ["command", "segment", "index"])
+
+ProgramFlowInstruction = collections.namedtuple(
+    "ProgramFlowInstruction", ["command", "label"])
+
+FunctionInstruction = collections.namedtuple(
+    "FunctionInstruction", ["command", "fname", "nargs"])
+
+ReturnInstuction = collections.namedtuple(
+    "FunctionInstruction", ["command"])
 
 
 TOKENS = {
-    PUSH_INSTR:       RE_PUSH_INSTR,
-    POP_INSTR:        RE_POP_INSTR,
-    ARITHMETIC_INSTR: RE_ARITHMETIC_INSTR,
+    PUSH:             RE_PUSH_INSTR,
+    POP:              RE_POP_INSTR,
     COMMENT:          RE_COMMENT,
     INLINE_COMMENT:   RE_INLINE_COMMENT,
     WHITESPACE:       RE_WHITESPACE,
-    LABEL_DECL:       RE_LABEL_DECL,
+    LABEL:            RE_LABEL,
+    GOTO:             RE_GOTO,
+    IF_GOTO:          RE_IF_GOTO,
 }
 
 
@@ -464,6 +497,12 @@ def parse_instruction(line, lineno):
         return ArithmeticInstruction(*terms)
     elif command in MEMORY_INSTRUCTIONS:
         return MemoryInstruction(*terms)
+    elif command in PROGRAM_FLOW_INSTRUCTIONS:
+        return ProgramFlowInstruction(*terms)
+    elif command in FUNCTION_INSTRUCTIONS(*terms):
+        return FunctionInstruction(*terms)
+    elif command == RETURN:
+        return ReturnInstuction(*terms)
     else:
         raise UnknownInstructionError(lineno, command, terms[1:])
     

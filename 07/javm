@@ -18,6 +18,16 @@ import re
 DEBUG = False
 """Debug mode."""
 
+LABEL_COUNTER = itertools.count(0)
+"""Counter for generating unique label ID's."""
+
+FILENAME = None
+"""Current file name for translation."""
+
+FUNCTION = None
+"""Current function name."""
+
+
 ARCH_BITS = 16
 """Bits in memory register (word's length)."""
 
@@ -124,6 +134,22 @@ FUNCTION_INSTRUCTIONS = (
 )
 
 
+MEMSEG_TO_BASE = {
+    ARGUMENT: "ARG",
+    LOCAL: "LCL",
+    THIS: "THIS",
+    THAT: "THAT"
+}
+"""Memory segment <-> base variable mapping (segment base index)."""
+
+
+MEMREG_TO_BASE = {
+    POINTER: "THIS",
+    TEMP: "R5"
+}
+"""Memory register instruction <-> variable address (segment base index)."""
+
+
 RE_COMMENT          = re.compile(r"^\s*{0}.*".format(COMMENT_SYMBOL))
 RE_INLINE_COMMENT   = re.compile(r".*{0}.*".format(COMMENT_SYMBOL))
 RE_PUSH_INSTR       = re.compile(r"^push.*")
@@ -201,10 +227,6 @@ def remove_inline_comment(instruction):
         return instruction.strip()
 
 
-LABEL_COUNTER = itertools.count(0)
-"""Counter for generating unique label ID's."""
-
-
 def gen_label_id(name):
     """Generate unique string representing label for asm generated code.
 
@@ -214,22 +236,6 @@ def gen_label_id(name):
     """
 
     return "{0}.{1}".format(name, LABEL_COUNTER.next())
-
-
-MEMSEG_TO_BASE = {
-    ARGUMENT: "ARG",
-    LOCAL: "LCL",
-    THIS: "THIS",
-    THAT: "THAT"
-}
-"""Memory segment <-> base variable mapping (segment base index)."""
-
-
-MEMREG_TO_BASE = {
-    POINTER: "THIS",
-    TEMP: "R5"
-}
-"""Memory register instruction <-> variable address (segment base index)."""
 
 
 def static_symbol(index):

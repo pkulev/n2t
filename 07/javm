@@ -8,6 +8,7 @@ Translates JACK Virtual Machine language to HACK assembly language.
 import argparse
 import collections
 import functools
+import glob
 import itertools
 import logging
 import os
@@ -561,11 +562,11 @@ def prepare_filenames(infile, outfile=None, out_ext="asm"):
     :param str out_ext: output file extension
 
     :return: processed file names
-    :rtype: tuple(str, str)
+    :rtype: tuple([str], str)
     """
     name, ext = os.path.splitext(infile)
     outfile = ".".join([name, out_ext]) if outfile is None else outfile
-    return infile, outfile
+    return [infile], outfile
 
 
 def main():
@@ -579,13 +580,25 @@ def main():
     
     logging.getLogger().setLevel(logging.DEBUG if DEBUG else logging.INFO)
     logging.debug("Incoming args: %s", args)
-    infile, outfile = prepare_filenames(args.filename, args.output)
-    FILENAME = os.path.splitext(os.path.basename(infile))[0]
-    logging.debug("Read from: '%s', write to: '%s'", infile, outfile)
 
-    with open(infile) as source:
-        assembly_code = vm_translator(source.readlines())
+    if os.path.isdir(args.filename):
+        logging.debug("Translating directory: %s", args.filename)
+        infile = glob.glob(os.path.join(args.filename, "*.vm"))
+        outfile = os.path.join(
+            args.filename, os.path.basename(args.filename) + ".asm")
+    else:
+        infile, outfile = prepare_filenames(args.filename, args.output)
 
+    assembly_code = ""
+    for filename in infile:
+        logging.debug("Translating %s", filename)
+        FILENAME = os.path.splitext(os.path.basename(filename))[0]
+
+        with open(filename) as source:
+            assembly_code += "\n// translated file: {0}\n".format(filename)
+            assembly_code += vm_translator(source.readlines())
+
+    logging.debug("Contents of: %s", outfile)
     logging.debug(assembly_code)
 
     with open(outfile, "w") as target:

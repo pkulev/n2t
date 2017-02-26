@@ -1,0 +1,557 @@
+#!/usr/bin/env python
+
+"""JACK VM translator to HACK assembler.
+
+Translates JACK Virtual Machine language to HACK assembly language.
+"""
+
+import argparse
+import collections
+import functools
+import itertools
+import logging
+import os
+import re
+
+
+DEBUG = False
+"""Debug mode."""
+
+ARCH_BITS = 16
+"""Bits in memory register (word's length)."""
+
+RAM_MAX_ADDRESS = 2 ** ARCH_BITS - 1
+"""Max address that CPU implementation supports."""
+
+
+class TranslationError(Exception):
+    """Base class for VM->ASM translation exceptions."""
+
+    def __init__(self, msg):
+        super(TranslationError, self).__init__(msg)
+
+
+class UnknownInstructionError(TranslationError):
+    """Got unknown instruction."""
+
+    def __init__(self, lineno, instruction, args):
+        super(UnknownInstructionError, self).__init__(
+            "Unknown instruction:%s: %s %s".format(
+                lineno, instruction, args))
+
+
+class UnsupportedInstructionError(TranslationError):
+    """Got unsupported instruction on command processing."""
+
+    def __init__(self, instruction):
+        super(UnsupportedInstructionError, self).__init__(
+            "Unsupported instruction: %s", repr(instruction))
+
+
+COMMENT_SYMBOL = "//"
+FREE_ADDRESS_SYMBOL = "__SYSTEM::ALLOC::FREE_ADDRESS"
+
+PUSH = "push"
+POP = "pop"
+ADD = "add"
+SUB = "sub"
+NEG = "neg"
+EQ = "eq"
+GT = "gt"
+LT = "lt"
+AND = "and"
+OR = "or"
+NOT = "not"
+
+STATIC="static"
+THIS="this"
+LOCAL="local"
+ARGUMENT="argument"
+THAT="that"
+CONSTANT="constant"
+POINTER="pointer"
+TEMP="temp"
+
+ARITHMETIC_INSTRUCTIONS = (
+    # arithmetic
+    ADD,
+    SUB,
+    NEG,
+    # logical
+    EQ,
+    GT,
+    LT,
+    AND,
+    OR,
+    NOT
+)
+
+MEMORY_INSTRUCTIONS = (
+    PUSH,
+    POP
+)
+
+RE_COMMENT          = re.compile(r"^\s*{0}.*".format(COMMENT_SYMBOL))
+RE_INLINE_COMMENT   = re.compile(r".*{0}.*".format(COMMENT_SYMBOL))
+RE_PUSH_INSTR       = re.compile(r"^push.*")
+RE_POP_INSTR        = re.compile(r"^pop/*")
+RE_WHITESPACE       = re.compile(r"^\s*$")
+RE_LABEL_DECL       = re.compile(r"^\(.*\)")
+RE_ARITHMETIC_INSTR = re.compile(
+    r"^{0}.*".format("|".join(ARITHMETIC_INSTRUCTIONS)))
+
+PUSH_INSTR = "VM PUSH COMMAND"
+POP_INSTR = "VM POP COMMAND"
+ARITHMETIC_INSTR = "VM ARITHMETIC COMMAND"
+COMMENT        = "COMMENTARY"
+INLINE_COMMENT = "INLINE COMMENTARY"
+WHITESPACE     = "WHITESPACE"
+LABEL_DECL     = "LABEL DECLARATION"
+
+
+ArithmeticInstruction = collections.namedtuple(
+    "ArithmeticInstruction", ["command"])
+
+MemoryInstruction = collections.namedtuple(
+    "MemoryInstruction", [
+        "command",
+        "segment",
+        "index"])
+
+
+TOKENS = {
+    PUSH_INSTR:       RE_PUSH_INSTR,
+    POP_INSTR:        RE_POP_INSTR,
+    ARITHMETIC_INSTR: RE_ARITHMETIC_INSTR,
+    COMMENT:          RE_COMMENT,
+    INLINE_COMMENT:   RE_INLINE_COMMENT,
+    WHITESPACE:       RE_WHITESPACE,
+    LABEL_DECL:       RE_LABEL_DECL,
+}
+
+
+def is_type(token, source):
+    """Check token class.
+
+    :param str token: token class
+    :param str source: line of code
+
+    :return: re or None
+    """
+    return TOKENS[token].match(source)
+
+
+def is_type(token, source):
+    """Check token class.
+
+    :param str token: token class
+    :param str source: line of code
+
+    :return: re or None
+    """
+    return TOKENS[token].match(source)
+
+
+def remove_inline_comment(instruction):
+    """Remove comment on single line with instruction.
+
+    :param str instruction: unparsed instruction
+
+    :return str: instruction without inline comment
+    """
+
+    if is_type(INLINE_COMMENT, instruction):
+        end = instruction.index(COMMENT_SYMBOL)
+        return instruction[0:end].strip()
+    else:
+        return instruction.strip()
+
+
+LABEL_COUNTER = itertools.count(0)
+"""Counter for generating unique label ID's."""
+
+
+def gen_label_id(name):
+    """Generate unique string representing label for asm generated code.
+
+    :param str name: label name
+
+    :return str: label ID
+    """
+
+    return "{0}.{1}".format(name, LABEL_COUNTER.next())
+
+
+MEMSEG_TO_BASE = {
+    ARGUMENT: "ARG",
+    LOCAL: "LCL",
+    THIS: "THIS",
+    THAT: "THAT"
+}
+"""Memory segment <-> base variable mapping (segment base index)."""
+
+
+MEMREG_TO_BASE = {
+    POINTER: "THIS",
+    TEMP: "R5"
+}
+"""Memory register instruction <-> variable address (segment base index)."""
+
+
+def static_symbol(index):
+    """Static symbol name (per file).
+
+    :param int index: memory index
+
+    :return str: static symbol
+    """
+
+    return "{0}.{1}".format(FILENAME, index)
+
+
+def translate_binary_arithmetic_instruction(instruction):
+    """Translate binary instruction to HACK ASM.
+
+    :param ArithmeticInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    BINARY_TO_ASM = {
+        ADD: "M=D+M",
+        SUB: "M=M-D",
+        AND: "M=D&M",
+        OR:  "M=D|M",
+    }
+
+    return [
+        "@SP",
+        "AM=M-1",
+        "D=M",
+        "A=A-1",
+        BINARY_TO_ASM[instruction.command],
+    ]
+
+
+def translate_unary_arithmetic_instruction(instruction):
+    """Translate unary instruction to HACK ASM.
+
+    :param ArithmeticInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    UNARY_TO_ASM = {
+        NEG: "M=-M",
+        NOT: "M=!M",
+    }
+
+    return [
+        "@SP",
+        "A=M-1",
+        UNARY_TO_ASM[instruction.command],
+    ]
+
+
+def translate_compare_instruction(instruction):
+    """Translate comparison instruction to HACK ASM.
+
+    :param ArithmeticInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    CMP_TO_ASM_JMP = {
+        EQ: "D;JEQ",  # x == y
+        GT: "D;JGT",  # x > y
+        LT: "D;JLT",  # x < y
+    }
+
+    condition_true_label = gen_label_id("condition.true")
+
+    return [
+        "@SP",
+        "AM=M-1",
+        "D=M",  # D = y
+        "A=A-1",
+        "D=M-D",  # D = x - y
+        # set stack's head to be True (0xffff)
+        "M=-1",
+        "@{0}".format(condition_true_label),
+        CMP_TO_ASM_JMP[instruction.command],
+        # if false - inc stack head value so it became False (0)
+        "@SP",
+        "A=M-1",
+        "M=M+1",
+        "({0})".format(condition_true_label),
+    ]
+
+
+def translate_pop_instruction(instruction):
+    """Process VM pop command.
+
+    Write the address of the address to store the value of D register ay
+    top of the stack and increment stack pointer.
+
+    :param MemoryInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    asm_lines = []
+
+    if instruction.segment in MEMSEG_TO_BASE:
+        base = MEMSEG_TO_BASE[instruction.segment]
+        asm_lines.extend([
+            "@{0}".format(base),
+            "D=M",
+            "@{0}".format(instruction.index),
+            "D=D+A",
+        ])
+
+    elif instruction.segment in MEMREG_TO_BASE:
+        base = MEMREG_TO_BASE[instruction.segment]
+        asm_lines.extend([
+            "@{0}".format(base),
+            "D=A",
+            "@{0}".format(instruction.index),
+            "D=D+A",
+        ])
+
+    elif instruction.segment == STATIC:
+        static_variable = static_symbol(instruction.index)
+        asm_lines.extend([
+            "@{0}".format(static_variable),
+            "D=A",
+        ])
+
+    else:
+        raise UnsupportedInstructionError(instruction)
+
+    asm_lines.extend([
+        "@R13",
+        "M=D",  # R13 <-- cell's address to read from
+        "@SP",
+        "AM=M-1",
+        "D=M",
+        "@R13",
+        "A=M",
+        "M=D",
+    ])
+
+    return asm_lines
+
+
+def translate_push_instuction(instruction, dereference_constant=False):
+    """Process push VM command.
+
+    Read the value from selected segment and store it in D register,
+    then store value of D register at the top of the stack and increment
+    stack pointer.
+
+    :param MemoryInstruction instruction:
+    :param bool dereference_constant: dereference constant
+
+    :return list: ASM lines
+    """
+
+    asm_lines = []
+
+    # pseudo-segment constant
+    if instruction.segment == CONSTANT:
+        asm_lines.extend([
+            "@{0}".format(instruction.index),
+            "D=A" if not dereference_constant else "D=M",
+        ])
+
+    # index based memory segments
+    elif instruction.segment in MEMSEG_TO_BASE:
+        base = MEMSEG_TO_BASE[instruction.segment]
+        asm_lines.extend([
+            "@{0}".format(base),
+            "D=M",
+            "@{0}".format(instruction.index),
+            "A=D+A",
+            "D=M",
+        ])
+
+    elif instruction.segment in MEMREG_TO_BASE:
+        base = MEMREG_TO_BASE[instruction.segment]
+        asm_lines.extend([
+            "@{0}".format(base),
+            "D=A",
+            "@{0}".format(instruction.index),
+            "A=D+A",
+            "D=M",
+        ])
+
+    elif instruction.segment == STATIC:
+        static_variable = static_symbol(instruction.index)
+        asm_lines.extend([
+            "@" + static_variable,
+            "D=M",
+        ])
+
+    else:
+        raise UnsupportedInstruction(instruction)
+
+    # store value of D register in @SP and increment SP
+    asm_lines.extend([
+        "@SP",
+        "A=M",
+        "M=D",
+        "@SP",
+        "M=M+1",
+    ])
+
+    return asm_lines
+
+
+INSTRUCTION_TRANSLATORS = {
+    # binary arithmetic commands
+    ADD: translate_binary_arithmetic_instruction,
+    SUB: translate_binary_arithmetic_instruction,
+    AND: translate_binary_arithmetic_instruction,
+    OR:  translate_binary_arithmetic_instruction,
+
+    # unary arithmetic commands
+    NOT: translate_unary_arithmetic_instruction,
+    NEG: translate_unary_arithmetic_instruction,
+
+    # comare commands
+    EQ: translate_compare_instruction,
+    GT: translate_compare_instruction,
+    LT: translate_compare_instruction,
+
+    # memory commands
+    PUSH: translate_push_instuction,
+    POP:  translate_pop_instruction,
+}
+"""Instruction translators for every type of command."""
+
+
+def strip_comments(sources):
+    """Strip comments.
+
+    :param list sources: raw vm code
+
+    :return list: stripped sources without comments
+    """
+
+    logging.info("Stripping comments -->")
+    processed = []
+    for line in sources:
+        line = remove_inline_comment(line)
+        if line:
+            processed.append(line)
+
+    logging.info("Stripping comments <--")
+    return processed
+
+
+def parse_instruction(line, lineno):
+    """Parse incoming instruction at lineno.
+
+    :param str line: raw instruction
+    :param int lineno: line number of current instruction
+
+    :return collections.namedtuple: resulting command object
+    """
+
+    terms = line.split(" ")
+    command = terms[0]
+    if command in ARITHMETIC_INSTRUCTIONS:
+        return ArithmeticInstruction(*terms)
+    elif command in MEMORY_INSTRUCTIONS:
+        return MemoryInstruction(*terms)
+    else:
+        raise UnknownInstructionError(lineno, command, terms[1:])
+    
+
+def translate(sources):
+    """Produce translated code.
+
+    :param list sources: stripped sources without comments
+
+    :return list: translated sources
+    """
+
+    lineno = 0
+    translated = []
+
+    logging.info("Tier II: translating vm code to asm -->")
+    for line in sources:
+        logging.debug("Processing line %s:", repr(line))
+        instruction = parse_instruction(line, lineno)
+        translator = INSTRUCTION_TRANSLATORS[instruction.command]
+        if DEBUG:
+            translated.append("// {0}".format(instruction))
+
+        translated += translator(instruction)
+        lineno += 1
+
+    logging.info("Tier II: translating vm code to asm <--")
+    return os.linesep.join(translated)
+
+
+def vm_translator(sources):
+    """Produce translated code."""
+
+    return translate(strip_comments(sources))
+
+
+def parse_args():
+    """Parse and return incoming arguments.
+
+    :return: parsed arguments
+    :rtype: argparse.Namespace
+    """
+    parser = argparse.ArgumentParser(description="JACK VM translator")
+    parser.add_argument("-d", "--debug", action="store_true", help="Debug mode")
+    parser.add_argument("-o", "--output", help="output file")
+    parser.add_argument("filename", help="input file")
+
+    return parser.parse_args()
+
+
+def prepare_filenames(infile, outfile=None, out_ext="asm"):
+    """Choose out file name if not provided.
+
+    :param str infile: input file name
+    :param str outfile: output file name
+    :param str out_ext: output file extension
+
+    :return: processed file names
+    :rtype: tuple(str, str)
+    """
+    name, ext = os.path.splitext(infile)
+    outfile = ".".join([name, out_ext]) if outfile is None else outfile
+    return infile, outfile
+
+
+def main():
+    """Main entry point."""
+
+    global DEBUG
+    global FILENAME
+
+    args = parse_args()
+    DEBUG = args.debug
+    
+    logging.getLogger().setLevel(logging.DEBUG if DEBUG else logging.INFO)
+    logging.debug("Incoming args: %s", args)
+    infile, outfile = prepare_filenames(args.filename, args.output)
+    FILENAME = os.path.basename(infile)
+    logging.debug("Read from: '%s', write to: '%s'", infile, outfile)
+
+    with open(infile) as source:
+        assembly_code = vm_translator(source.readlines())
+
+    logging.debug(assembly_code)
+
+    with open(outfile, "w") as target:
+        target.write(assembly_code)
+
+
+if __name__ == "__main__":
+    main()

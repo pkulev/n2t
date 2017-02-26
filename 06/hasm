@@ -35,7 +35,7 @@ class UndeclaredLabel(TranslationError):
     """Parser met undeclared label."""
 
     def __init__(self, label):
-        super(TranslationError, self).__init__(
+        super(UndeclaredLabel, self).__init__(
             "Undeclared label: {0}".format(label))
 
 
@@ -43,7 +43,7 @@ class LabelRedeclarationError(TranslationError):
     """Parser met already declared label redeclaration."""
 
     def __init__(self, label, address):
-        super(TranslationError, self).__init__(
+        super(LabelRedeclarationError, self).__init__(
             "Label {0} already was declared with value {1}".format(
                 label, address))
 

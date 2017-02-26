@@ -24,7 +24,7 @@ LABEL_COUNTER = itertools.count(0)
 FILENAME = None
 """Current file name for translation."""
 
-FUNCTION = None
+FUNCTION = ""
 """Current function name."""
 
 
@@ -227,7 +227,7 @@ def remove_inline_comment(instruction):
         return instruction.strip()
 
 
-def gen_label_id(name):
+def label_id(name):
     """Generate unique string representing label for asm generated code.
 
     :param str name: label name
@@ -236,6 +236,17 @@ def gen_label_id(name):
     """
 
     return "{0}.{1}".format(name, LABEL_COUNTER.next())
+
+
+def function_label_id(name):
+    """Label string in current function.
+
+    :param string name: label name
+
+    :return str: label ID within function
+    """
+
+    return "{0}.{1}".format(FUNCTION, name)
 
 
 def static_symbol(index):
@@ -307,7 +318,7 @@ def translate_compare_instruction(instruction):
         LT: "D;JLT",  # x < y
     }
 
-    condition_true_label = gen_label_id("condition.true")
+    condition_true_label = label_id("condition.true")
 
     return [
         "@SP",

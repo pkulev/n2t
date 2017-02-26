@@ -541,7 +541,7 @@ def main():
     logging.getLogger().setLevel(logging.DEBUG if DEBUG else logging.INFO)
     logging.debug("Incoming args: %s", args)
     infile, outfile = prepare_filenames(args.filename, args.output)
-    FILENAME = os.path.basename(infile)
+    FILENAME = os.path.splitext(os.path.basename(infile))[0]
     logging.debug("Read from: '%s', write to: '%s'", infile, outfile)
 
     with open(infile) as source:

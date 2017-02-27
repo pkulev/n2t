@@ -461,6 +461,255 @@ def translate_push_instuction(instruction, dereference_constant=False):
     return asm_lines
 
 
+def insert_bootstrap_code(asm_lines):
+    """Set stack pointer, call Sys.init function."""
+
+    global ASM
+
+    asm_lines = [
+        "@256",
+        "D=A",
+        "@SP",
+        "M=D",
+    ]
+
+    asm_lines.extend(
+        translate_function_instruction(
+            FunctionInstruction(
+                command=CALL,
+                fname=SYS_INIT,
+                nargs='0')))
+
+    ASM = asm_lines + ASM[:]
+
+
+def translate_label_instruction(instruction):
+    """Process label VM command.
+
+    :param ProgramFlowInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    return ["({0})".format(function_label_id(instruction.label))]
+
+
+def translate_goto_instruction(instruction):
+    """Process goto VM command.
+
+    :param ProgramFlowInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    return [
+        "@{0}".format(function_label_id(instruction.label)),
+        "0;JMP",
+    ]
+
+
+def translate_if_goto_instruction(instruction):
+    """Process if-goto VM command.
+
+    :param ProgramFlowInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    return [
+        "@SP",
+        "AM=M-1",
+        "D=M",
+        "@{0}".format(function_label_id(instruction.label)),
+        "D;JNE",
+    ]
+
+
+def translate_function_instuction(instruction):
+    """Process VM function declaration instruction.
+
+    :param FunctionInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    global FUNCTION
+
+    FUNCTION = instruction.function_name
+
+    asm_lines = []
+
+    if FUNCTION == SYS_INIT:
+        insert_bootstrap_code()
+
+    asm_lines.extend([
+        "({0})".format(FUNCTION),
+    ])
+
+    for _ in range(int(instruction.nargs)):
+        asm_lines.extend(
+            translate_push_instruction(
+                MemoryInstruction(
+                    command=PUSH,
+                    segment=CONSTANT,
+                    index="0")))
+
+    return asm_lines
+
+
+def translate_call_instruction(instruction):
+    """Process call VM instruction.
+
+    :param FunctionInstruction instruction:
+
+    :return list: asm lines
+    """
+
+    asm_lines = []
+    rlabel = label_id("return-from-{0}".format(instruction.fname))
+
+    # push return address
+    asm_lines.extend(
+        translate_push_instuction(
+            MemoryInstruction(
+                command=PUSH,
+                segment=CONSTANT,
+                index=rlabel)))
+
+    # push LCL value
+    asm_lines.extend(
+        translate_push_instuction(
+            MemoryInstruction(
+                command=PUSH,
+                segment=CONSTANT,
+                index="LCL"),
+            dereference_constant=True))
+
+    # push ARG value
+    asm_lines.extend(
+        translate_push_instuction(
+            MemoryInstruction(
+                command=PUSH,
+                segment=CONSTANT,
+                index="ARG"),
+            dereference_constant=True))
+
+    # push THIS
+    asm_lines.extend(
+        translate_push_instruction(
+            MemoryInstruction(
+                command=PUSH,
+                segment=CONSTANT,
+                index="THIS"),
+            dereference_constant=True))
+
+    # push THAT
+    asm_lines.extend(
+        translate_push_instruction(
+            MemoryInstruction(
+                command=PUSH,
+                segment=CONSTANT,
+                index="THAT"),
+            dereference_constant=True))
+
+    # ARG <- SP - nargs - 5
+    asm_lines.extend([
+        "@SP",
+        "D=M",
+        "@{0}".format(int(instruction.nargs) + 5),
+        "D=D-A",  # SP - (nargs + 5)
+        "@ARG",
+        "M=D",
+    ])
+
+    # LCL <- SP
+    asm_lines.extend([
+        "@SP",
+        "D=M",
+        "@LCL",
+        "M=D",
+    ])
+
+    # goto function
+    asm_lines.extend([
+        "@{0}".format(instruction.fname),
+        "0;JMP"
+    ])
+
+    # the return address
+    asm_lines.extend([
+        "({0})".format(rlabel),
+    ])
+
+    return asm_lines
+
+
+def translate_return_instruction(instruction):
+    """Process return VM command.
+
+    :param ReturnInstuction instruction:
+
+    :return list: asm lines
+    """
+
+    return [
+        # *(LCL - 5) -> R13
+        "@LCL",
+        "D=M",
+        "@5",
+        "A=D-A",
+        "D=M",
+        "@13",
+        "M=D",
+
+        # *(SP - 1) -> *ARG
+        "@SP",
+        "A=M-1",
+        "D=M",
+        "@ARG",
+        "A=M",
+        "M=D ",
+
+        # ARG + 1 -> SP
+        "D=A+1",
+        "@SP",
+        "M=D",
+
+        # *(LCL - 1) -> THAT; LCL--
+        "@LCL",
+        "AM=M-1",
+        "D=M",
+        "@THAT",
+        "M=D",
+
+        # *(LCL - 1) -> THIS; LCL--
+        "@LCL",
+        "AM=M-1",
+        "D=M",
+        "@THIS",
+        "M=D",
+
+        # *(LCL - 1) -> ARG; LCL--
+        "@LCL",
+        "AM=M-1",
+        "D=M",
+        "@ARG",
+        "M=D",
+
+        # *(LCL - 1) -> LCL
+        "@LCL",
+        "A=M-1",
+        "D=M",
+        "@LCL",
+        "M=D",
+
+        # R13 -> A
+        "@13",
+        "A=M",
+        "0;JMP",
+    ]
+
+
 INSTRUCTION_TRANSLATORS = {
     # binary arithmetic commands
     ADD: translate_binary_arithmetic_instruction,
@@ -480,6 +729,16 @@ INSTRUCTION_TRANSLATORS = {
     # memory commands
     PUSH: translate_push_instuction,
     POP:  translate_pop_instruction,
+
+    # program flow commands
+    LABEL:   translate_label_instruction,
+    GOTO:    translate_goto_instruction,
+    IF_GOTO: translate_if_goto_instruction,
+
+    # Function commands
+    CALL:     translate_call_instruction,
+    RETURN:   translate_return_instruction,
+    FUNCTION: translate_function_instuction,
 }
 """Instruction translators for every type of command."""
 

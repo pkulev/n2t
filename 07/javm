@@ -27,8 +27,11 @@ FILENAME = None
 FUNCTION = ""
 """Current function name."""
 
-ASM = None
+ASM = []
 """Resulting ASM code."""
+
+def asm(*lines):
+    ASM.extend(lines)
 
 
 ARCH_BITS = 16
@@ -266,8 +269,6 @@ def translate_binary_arithmetic_instruction(instruction):
     """Translate binary instruction to HACK ASM.
 
     :param ArithmeticInstruction instruction:
-
-    :return list: asm lines
     """
 
     BINARY_TO_ASM = {
@@ -277,21 +278,19 @@ def translate_binary_arithmetic_instruction(instruction):
         OR:  "M=D|M",
     }
 
-    return [
+    asm(
         "@SP",
         "AM=M-1",
         "D=M",
         "A=A-1",
         BINARY_TO_ASM[instruction.command],
-    ]
+    )
 
 
 def translate_unary_arithmetic_instruction(instruction):
     """Translate unary instruction to HACK ASM.
 
     :param ArithmeticInstruction instruction:
-
-    :return list: asm lines
     """
 
     UNARY_TO_ASM = {
@@ -299,19 +298,17 @@ def translate_unary_arithmetic_instruction(instruction):
         NOT: "M=!M",
     }
 
-    return [
+    asm(
         "@SP",
         "A=M-1",
         UNARY_TO_ASM[instruction.command],
-    ]
+    )
 
 
 def translate_compare_instruction(instruction):
     """Translate comparison instruction to HACK ASM.
 
     :param ArithmeticInstruction instruction:
-
-    :return list: asm lines
     """
 
     CMP_TO_ASM_JMP = {
@@ -322,7 +319,7 @@ def translate_compare_instruction(instruction):
 
     condition_true_label = label_id("condition.true")
 
-    return [
+    asm(
         "@SP",
         "AM=M-1",
         "D=M",  # D = y
@@ -337,7 +334,7 @@ def translate_compare_instruction(instruction):
         "A=M-1",
         "M=M+1",
         "({0})".format(condition_true_label),
-    ]
+    )
 
 
 def translate_pop_instruction(instruction):
@@ -347,41 +344,37 @@ def translate_pop_instruction(instruction):
     top of the stack and increment stack pointer.
 
     :param MemoryInstruction instruction:
-
-    :return list: asm lines
     """
-
-    asm_lines = []
 
     if instruction.segment in MEMSEG_TO_BASE:
         base = MEMSEG_TO_BASE[instruction.segment]
-        asm_lines.extend([
+        asm(
             "@{0}".format(base),
             "D=M",
             "@{0}".format(instruction.index),
             "D=D+A",
-        ])
+        )
 
     elif instruction.segment in MEMREG_TO_BASE:
         base = MEMREG_TO_BASE[instruction.segment]
-        asm_lines.extend([
+        asm(
             "@{0}".format(base),
             "D=A",
             "@{0}".format(instruction.index),
             "D=D+A",
-        ])
+        )
 
     elif instruction.segment == STATIC:
         static_variable = static_symbol(instruction.index)
-        asm_lines.extend([
+        asm(
             "@{0}".format(static_variable),
             "D=A",
-        ])
+        )
 
     else:
         raise UnsupportedInstructionError(instruction)
 
-    asm_lines.extend([
+    asm(
         "@R13",
         "M=D",  # R13 <-- cell's address to read from
         "@SP",
@@ -390,9 +383,7 @@ def translate_pop_instruction(instruction):
         "@R13",
         "A=M",
         "M=D",
-    ])
-
-    return asm_lines
+    )
 
 
 def translate_push_instruction(instruction, dereference_constant=False):
@@ -404,60 +395,54 @@ def translate_push_instruction(instruction, dereference_constant=False):
 
     :param MemoryInstruction instruction:
     :param bool dereference_constant: dereference constant
-
-    :return list: ASM lines
     """
-
-    asm_lines = []
 
     # pseudo-segment constant
     if instruction.segment == CONSTANT:
-        asm_lines.extend([
+        asm(
             "@{0}".format(instruction.index),
             "D=A" if not dereference_constant else "D=M",
-        ])
+        )
 
     # index based memory segments
     elif instruction.segment in MEMSEG_TO_BASE:
         base = MEMSEG_TO_BASE[instruction.segment]
-        asm_lines.extend([
+        asm(
             "@{0}".format(base),
             "D=M",
             "@{0}".format(instruction.index),
             "A=D+A",
             "D=M",
-        ])
+        )
 
     elif instruction.segment in MEMREG_TO_BASE:
         base = MEMREG_TO_BASE[instruction.segment]
-        asm_lines.extend([
+        asm(
             "@{0}".format(base),
             "D=A",
             "@{0}".format(instruction.index),
             "A=D+A",
             "D=M",
-        ])
+        )
 
     elif instruction.segment == STATIC:
         static_variable = static_symbol(instruction.index)
-        asm_lines.extend([
+        asm(
             "@" + static_variable,
             "D=M",
-        ])
+        )
 
     else:
         raise UnsupportedInstruction(instruction)
 
     # store value of D register in @SP and increment SP
-    asm_lines.extend([
+    asm(
         "@SP",
         "A=M",
         "M=D",
         "@SP",
         "M=M+1",
-    ])
-
-    return asm_lines
+    )
 
 
 def insert_bootstrap_code():
@@ -465,193 +450,163 @@ def insert_bootstrap_code():
 
     global ASM
 
-    asm_lines = [
+    all_code = ASM[:]
+    ASM = []
+
+    asm(
         "@256",
         "D=A",
         "@SP",
         "M=D",
-    ]
+    )
 
-    asm_lines.extend(
-        translate_call_instruction(
-            FunctionInstruction(
-                command=CALL,
-                fname=SYS_INIT,
-                nargs='0')))
+    translate_call_instruction(
+        FunctionInstruction(command=CALL, fname=SYS_INIT, nargs='0'))
 
-    ASM = asm_lines + ASM[:]
+    ASM = ASM[:] + all_code
 
 
 def translate_label_instruction(instruction):
     """Process label VM command.
 
     :param ProgramFlowInstruction instruction:
-
-    :return list: asm lines
     """
 
-    return ["({0})".format(function_label_id(instruction.label))]
+    asm("({0})".format(function_label_id(instruction.label)))
 
 
 def translate_goto_instruction(instruction):
     """Process goto VM command.
 
     :param ProgramFlowInstruction instruction:
-
-    :return list: asm lines
     """
 
-    return [
+    asm(
         "@{0}".format(function_label_id(instruction.label)),
         "0;JMP",
-    ]
+    )
 
 
 def translate_if_goto_instruction(instruction):
     """Process if-goto VM command.
 
     :param ProgramFlowInstruction instruction:
-
-    :return list: asm lines
     """
 
-    return [
+    asm(
         "@SP",
         "AM=M-1",
         "D=M",
         "@{0}".format(function_label_id(instruction.label)),
         "D;JNE",
-    ]
+    )
 
 
 def translate_function_instruction(instruction):
     """Process VM function declaration instruction.
 
     :param FunctionInstruction instruction:
-
-    :return list: asm lines
     """
 
     global FUNCTION
 
     FUNCTION = instruction.fname
 
-    asm_lines = []
-
     if FUNCTION == SYS_INIT:
         insert_bootstrap_code()
 
-    asm_lines.extend([
-        "({0})".format(FUNCTION),
-    ])
+        
+    asm("({0})".format(FUNCTION))
 
     for _ in range(int(instruction.nargs)):
-        asm_lines.extend(
-            translate_push_instruction(
-                MemoryInstruction(
-                    command=PUSH,
-                    segment=CONSTANT,
-                    index="0")))
-
-    return asm_lines
+        translate_push_instruction(
+            MemoryInstruction(command=PUSH, segment=CONSTANT, index="0"))
 
 
 def translate_call_instruction(instruction):
     """Process call VM instruction.
 
     :param FunctionInstruction instruction:
-
-    :return list: asm lines
     """
 
-    asm_lines = []
     rlabel = label_id("return-from-{0}".format(instruction.fname))
 
     # push return address
-    asm_lines.extend(
-        translate_push_instruction(
-            MemoryInstruction(
-                command=PUSH,
-                segment=CONSTANT,
-                index=rlabel)))
+    translate_push_instruction(
+        MemoryInstruction(
+            command=PUSH,
+            segment=CONSTANT,
+            index=rlabel))
 
     # push LCL value
-    asm_lines.extend(
-        translate_push_instruction(
-            MemoryInstruction(
-                command=PUSH,
-                segment=CONSTANT,
-                index="LCL"),
-            dereference_constant=True))
+    translate_push_instruction(
+        MemoryInstruction(
+            command=PUSH,
+            segment=CONSTANT,
+            index="LCL"),
+        dereference_constant=True)
 
     # push ARG value
-    asm_lines.extend(
-        translate_push_instruction(
-            MemoryInstruction(
-                command=PUSH,
-                segment=CONSTANT,
-                index="ARG"),
-            dereference_constant=True))
+    translate_push_instruction(
+        MemoryInstruction(
+            command=PUSH,
+            segment=CONSTANT,
+            index="ARG"),
+        dereference_constant=True)
 
     # push THIS
-    asm_lines.extend(
-        translate_push_instruction(
-            MemoryInstruction(
-                command=PUSH,
-                segment=CONSTANT,
-                index="THIS"),
-            dereference_constant=True))
+    translate_push_instruction(
+        MemoryInstruction(
+            command=PUSH,
+            segment=CONSTANT,
+            index="THIS"),
+        dereference_constant=True)
 
     # push THAT
-    asm_lines.extend(
-        translate_push_instruction(
-            MemoryInstruction(
-                command=PUSH,
-                segment=CONSTANT,
-                index="THAT"),
-            dereference_constant=True))
+    translate_push_instruction(
+        MemoryInstruction(
+            command=PUSH,
+            segment=CONSTANT,
+            index="THAT"),
+        dereference_constant=True)
 
     # ARG <- SP - nargs - 5
-    asm_lines.extend([
+    asm(
         "@SP",
         "D=M",
         "@{0}".format(int(instruction.nargs) + 5),
         "D=D-A",  # SP - (nargs + 5)
         "@ARG",
         "M=D",
-    ])
+    )
 
     # LCL <- SP
-    asm_lines.extend([
+    asm(
         "@SP",
         "D=M",
         "@LCL",
         "M=D",
-    ])
+    )
 
     # goto function
-    asm_lines.extend([
+    asm(
         "@{0}".format(instruction.fname),
         "0;JMP"
-    ])
+    )
 
     # the return address
-    asm_lines.extend([
+    asm(
         "({0})".format(rlabel),
-    ])
-
-    return asm_lines
+    )
 
 
 def translate_return_instruction(instruction):
     """Process return VM command.
 
     :param ReturnInstruction instruction:
-
-    :return list: asm lines
     """
 
-    return [
+    asm(
         # *(LCL - 5) -> R13
         "@LCL",
         "D=M",
@@ -706,7 +661,7 @@ def translate_return_instruction(instruction):
         "@13",
         "A=M",
         "0;JMP",
-    ]
+    )
 
 
 INSTRUCTION_TRANSLATORS = {
@@ -790,15 +745,9 @@ def translate(sources):
     """Produce translated code.
 
     :param list sources: stripped sources without comments
-
-    :return list: translated sources
     """
 
-    global ASM
-
     lineno = 0
-    translated = []
-    ASM = translated  # reference to
 
     logging.info("Tier II: translating vm code to asm -->")
     for line in sources:
@@ -806,13 +755,12 @@ def translate(sources):
         instruction = parse_instruction(line, lineno)
         translator = INSTRUCTION_TRANSLATORS[instruction.command]
         if DEBUG:
-            translated.append("// {0}".format(instruction))
+            asm("// {0}".format(instruction))
 
-        translated += translator(instruction)
+        translator(instruction)
         lineno += 1
 
     logging.info("Tier II: translating vm code to asm <--")
-    return os.linesep.join(translated)
 
 
 def vm_translator(sources):
@@ -870,15 +818,14 @@ def main():
     else:
         infile, outfile = prepare_filenames(args.filename, args.output)
 
-    assembly_code = ""
     for filename in infile:
         logging.debug("Translating %s", filename)
         FILENAME = os.path.splitext(os.path.basename(filename))[0]
 
         with open(filename) as source:
-            assembly_code += "\n// translated file: {0}\n".format(filename)
-            assembly_code += vm_translator(source.readlines())
+            vm_translator(source.readlines())
 
+    assembly_code = os.linesep.join(ASM)
     logging.debug("Contents of: %s", outfile)
     logging.debug(assembly_code)
 

@@ -132,7 +132,6 @@ PROGRAM_FLOW_INSTRUCTIONS = (
 
 FUNCTION_INSTRUCTIONS = (
     CALL,
-    RETURN,
     FUNCTION,
 )
 
@@ -461,7 +460,7 @@ def translate_push_instuction(instruction, dereference_constant=False):
     return asm_lines
 
 
-def insert_bootstrap_code(asm_lines):
+def insert_bootstrap_code():
     """Set stack pointer, call Sys.init function."""
 
     global ASM
@@ -474,7 +473,7 @@ def insert_bootstrap_code(asm_lines):
     ]
 
     asm_lines.extend(
-        translate_function_instruction(
+        translate_call_instruction(
             FunctionInstruction(
                 command=CALL,
                 fname=SYS_INIT,
@@ -535,7 +534,7 @@ def translate_function_instuction(instruction):
 
     global FUNCTION
 
-    FUNCTION = instruction.function_name
+    FUNCTION = instruction.fname
 
     asm_lines = []
 
@@ -779,10 +778,10 @@ def parse_instruction(line, lineno):
         return MemoryInstruction(*terms)
     elif command in PROGRAM_FLOW_INSTRUCTIONS:
         return ProgramFlowInstruction(*terms)
-    elif command in FUNCTION_INSTRUCTIONS(*terms):
+    elif command in FUNCTION_INSTRUCTIONS:
         return FunctionInstruction(*terms)
     elif command == RETURN:
-        return ReturnInstuction(*terms)
+        return ReturnInstruction(*terms)
     else:
         raise UnknownInstructionError(lineno, command, terms[1:])
     

@@ -27,6 +27,9 @@ FILENAME = None
 FUNCTION = ""
 """Current function name."""
 
+ASM = None
+"""Resulting ASM code."""
+
 
 ARCH_BITS = 16
 """Bits in memory register (word's length)."""
@@ -533,8 +536,11 @@ def translate(sources):
     :return list: translated sources
     """
 
+    global ASM
+
     lineno = 0
     translated = []
+    ASM = translated  # reference to
 
     logging.info("Tier II: translating vm code to asm -->")
     for line in sources:

@@ -176,7 +176,7 @@ ProgramFlowInstruction = collections.namedtuple(
 FunctionInstruction = collections.namedtuple(
     "FunctionInstruction", ["command", "fname", "nargs"])
 
-ReturnInstuction = collections.namedtuple(
+ReturnInstruction = collections.namedtuple(
     "FunctionInstruction", ["command"])
 
 
@@ -395,7 +395,7 @@ def translate_pop_instruction(instruction):
     return asm_lines
 
 
-def translate_push_instuction(instruction, dereference_constant=False):
+def translate_push_instruction(instruction, dereference_constant=False):
     """Process push VM command.
 
     Read the value from selected segment and store it in D register,
@@ -524,7 +524,7 @@ def translate_if_goto_instruction(instruction):
     ]
 
 
-def translate_function_instuction(instruction):
+def translate_function_instruction(instruction):
     """Process VM function declaration instruction.
 
     :param FunctionInstruction instruction:
@@ -569,7 +569,7 @@ def translate_call_instruction(instruction):
 
     # push return address
     asm_lines.extend(
-        translate_push_instuction(
+        translate_push_instruction(
             MemoryInstruction(
                 command=PUSH,
                 segment=CONSTANT,
@@ -577,7 +577,7 @@ def translate_call_instruction(instruction):
 
     # push LCL value
     asm_lines.extend(
-        translate_push_instuction(
+        translate_push_instruction(
             MemoryInstruction(
                 command=PUSH,
                 segment=CONSTANT,
@@ -586,7 +586,7 @@ def translate_call_instruction(instruction):
 
     # push ARG value
     asm_lines.extend(
-        translate_push_instuction(
+        translate_push_instruction(
             MemoryInstruction(
                 command=PUSH,
                 segment=CONSTANT,
@@ -646,7 +646,7 @@ def translate_call_instruction(instruction):
 def translate_return_instruction(instruction):
     """Process return VM command.
 
-    :param ReturnInstuction instruction:
+    :param ReturnInstruction instruction:
 
     :return list: asm lines
     """
@@ -726,7 +726,7 @@ INSTRUCTION_TRANSLATORS = {
     LT: translate_compare_instruction,
 
     # memory commands
-    PUSH: translate_push_instuction,
+    PUSH: translate_push_instruction,
     POP:  translate_pop_instruction,
 
     # program flow commands
@@ -737,7 +737,7 @@ INSTRUCTION_TRANSLATORS = {
     # Function commands
     CALL:     translate_call_instruction,
     RETURN:   translate_return_instruction,
-    FUNCTION: translate_function_instuction,
+    FUNCTION: translate_function_instruction,
 }
 """Instruction translators for every type of command."""
 

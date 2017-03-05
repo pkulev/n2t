@@ -6,7 +6,7 @@ class Cat {
     // Sprite coordinates
     field int x, y;
     // Sprite deltas
-    field int dx;
+    field int dx, dy;
 
     // Sprite direction (for moving):
     //  0 -> null
@@ -35,9 +35,10 @@ class Cat {
     constructor Cat new(int _x, int _y) {
         let x = _x;
         let y = _y;
-        let direction = 1;
-        let viewDirection = 1;
+        let direction = 0;  // don't move
+        let viewDirection = 1;  // but look right
         let dx = 1;
+        let dy = 1;
         let maxIdle = 10000;  // ~5s
 
         return this;
@@ -56,13 +57,16 @@ class Cat {
     /* Update object's state. */
     method void update() {
         //let x = x + (direction * dx);
+        let y = y + (direction * dy);
+        if (y < 0) {let y = 512 - 16;}
+        if (y > (512 - 16)) {let y = 0;}
         return;
     }
 
     /* render object to the screen. */
     method void render() {
         var int offset;
-        let int offset = 0;
+        let offset = (x * 32) + (y / 16);
 
         // do this manually via screen memory map
         if (animFrame = 0) {do animStandLeft(offset);}
@@ -180,7 +184,7 @@ class Cat {
     method void animStuckRight(int location) {
         let memAddress = 16384+location;
         do Memory.poke(memAddress+0, 28672);
-        do Memory.poke(memAddress+32, 4096);
+        do Memory.poke(memAddress+32, 16384);
         do Memory.poke(memAddress+64, 8192);
         do Memory.poke(memAddress+96, 0);
         do Memory.poke(memAddress+128, 8204);

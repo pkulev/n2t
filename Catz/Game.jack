@@ -20,7 +20,8 @@ class Game {
         let width = 512;
         let height = 256;
 
-        let actor = Cat.new(width, height);
+        // bottom, minus sprite height
+        let actor = Cat.new(256-16, 0);
         let idle = 0;
         let running = true;
 
@@ -88,7 +89,7 @@ class Game {
             do update();
             do render();
 
-            do Sys.wait(0);
+            do Sys.wait(15);
         }
         return;
     }

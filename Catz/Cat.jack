@@ -1,0 +1,103 @@
+/** Cat model representation. Due to lack of time here placed all cat related
+    things including sprite animation frames. */
+
+class Cat {
+
+    // Sprite coordinates
+    field int x, y;
+
+    // Sprite direction: 0 -> left, 1 -> right
+    field int direction;
+
+    field int memAddress;
+
+
+    constructor Cat new(int _x, int _y) {
+        let x = _x;
+        let y = _y;
+        let direction = 1;
+
+        do render();
+        return this;
+    }
+
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /* render object to the screen. */
+    method void render() {
+        // do this manually via screen memory map
+        if (direction = 0) {do animStandLeft(0);}
+        if (direction = 1) {do animStandRight(0);}
+        // What
+        return;
+    }
+
+    /* Update object's state. */
+    method void update() {
+        return;
+    }
+
+    method void erase() {
+        do Screen.setColor(false);
+        // do other things
+        return;
+    }
+
+    method void moveLeft() {
+        // TODO
+        return;
+    }
+
+    method void moveRight() {
+        // TODO
+        return;
+    }
+
+
+    /* Cat stays and looks right */
+    method void animStandRight(int location) {
+	let memAddress = 16384+location;
+	do Memory.poke(memAddress+0, 0);
+	do Memory.poke(memAddress+32, 0);
+	do Memory.poke(memAddress+64, 0);
+	do Memory.poke(memAddress+96, 0);
+	do Memory.poke(memAddress+128, 12);
+	do Memory.poke(memAddress+160, 2050);
+	do Memory.poke(memAddress+192, 14338);
+	do Memory.poke(memAddress+224, 30722);
+	do Memory.poke(memAddress+256, 15332);
+	do Memory.poke(memAddress+288, 8188);
+	do Memory.poke(memAddress+320, 8188);
+	do Memory.poke(memAddress+352, 4092);
+	do Memory.poke(memAddress+384, 3644);
+	do Memory.poke(memAddress+416, 1048);
+	do Memory.poke(memAddress+448, 1032);
+	do Memory.poke(memAddress+480, 3096);
+	return;
+    }
+
+    /* Cat stays and looks left */
+    method void animStandLeft(int location) {
+	let memAddress = 16384+location;
+	do Memory.poke(memAddress+0, 0);
+	do Memory.poke(memAddress+32, 0);
+	do Memory.poke(memAddress+64, 0);
+	do Memory.poke(memAddress+96, 0);
+	do Memory.poke(memAddress+128, 12);
+	do Memory.poke(memAddress+160, 2050);
+	do Memory.poke(memAddress+192, 14338);
+	do Memory.poke(memAddress+224, 30722);
+	do Memory.poke(memAddress+256, 15332);
+	do Memory.poke(memAddress+288, 8188);
+	do Memory.poke(memAddress+320, 8188);
+	do Memory.poke(memAddress+352, 4092);
+	do Memory.poke(memAddress+384, 3644);
+	do Memory.poke(memAddress+416, 1048);
+	do Memory.poke(memAddress+448, 1032);
+	do Memory.poke(memAddress+480, 3096);
+	return;
+    }
+}

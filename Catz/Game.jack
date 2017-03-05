@@ -1,0 +1,64 @@
+/** Game */
+
+class Game {
+
+    // Controllable character
+    field Cat actor;
+
+    // Actor sprite direction: 0 -> left, 1 -> right
+    field int direction;
+
+    field boolean running;
+
+    constructor Game new() {        
+
+        let actor = Cat.new(0, 0);
+        let direction = 1;
+        let running = true;
+
+        return this;
+    }
+
+    method void dispose() {
+        do cat.dispose();
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    method void exit() {
+        let running = false;
+        return;
+    }
+
+    method void events() {
+        var char key;
+        let key = Keyboard.keyPressed();
+        if (key = 81) {let running = false;}  // q
+        if (key = 130) {let direction = 0;}  // left arrow
+        if (key = 132) {let direction = 1;}  // right arrow
+        // if (key = 
+    }
+
+    method void update() {
+        do actor.update();
+        return;
+    }
+
+    method void render() {
+        do actor.render();
+        return;
+    }
+
+    /* Main loop of the application. */
+    method void loop() {
+
+        while (running) {
+            // do events();
+            do cat.update();
+            do cat.render();
+
+            do Sys.wait(0);
+        }
+        return;
+    }
+}

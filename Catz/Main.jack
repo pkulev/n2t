@@ -1,0 +1,16 @@
+/** Entry point */
+
+class Main {
+
+    function void main() {
+        // entry point
+
+        var Game game;
+
+        let game = Game.new();
+        do game.loop();
+        do game.dispose();
+
+        return;
+    }
+}

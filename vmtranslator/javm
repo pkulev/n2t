@@ -206,17 +206,6 @@ def is_type(token, source):
     return TOKENS[token].match(source)
 
 
-def is_type(token, source):
-    """Check token class.
-
-    :param str token: token class
-    :param str source: line of code
-
-    :return: re or None
-    """
-    return TOKENS[token].match(source)
-
-
 def remove_inline_comment(instruction):
     """Remove comment on single line with instruction.
 
@@ -428,7 +417,7 @@ def translate_push_instruction(instruction, dereference_constant=False):
     elif instruction.segment == STATIC:
         static_variable = static_symbol(instruction.index)
         asm(
-            "@" + static_variable,
+            "@{0}".format(static_variable),
             "D=M",
         )
 
@@ -446,7 +435,10 @@ def translate_push_instruction(instruction, dereference_constant=False):
 
 
 def insert_bootstrap_code():
-    """Set stack pointer, call Sys.init function."""
+    """Set stack pointer, call Sys.init function.
+
+    This code must be plased at ROM[0].
+    """
 
     global ASM
 
@@ -469,6 +461,9 @@ def insert_bootstrap_code():
 def translate_label_instruction(instruction):
     """Process label VM command.
 
+    VM syntax: label <name>
+    ASM: insert (<name>)
+
     :param ProgramFlowInstruction instruction:
     """
 
@@ -477,6 +472,9 @@ def translate_label_instruction(instruction):
 
 def translate_goto_instruction(instruction):
     """Process goto VM command.
+
+    VM syntax: goto <name>
+    ASM: put label address to A and make unconditional jump
 
     :param ProgramFlowInstruction instruction:
     """
@@ -489,6 +487,23 @@ def translate_goto_instruction(instruction):
 
 def translate_if_goto_instruction(instruction):
     """Process if-goto VM command.
+
+    VM syntax: if-goto <name>
+    ASM: Put value to D, if D != 0 -> jump
+
+    if (n == 0) {
+        // code here
+    } else {
+        // else code
+    }
+
+    .. Before if-goto::
+    * eval condition and put result to stack
+    .. On if-goto::
+    * go to condition result
+    * if condition result != 0 then jump to basecase branch
+    .. After if-goto::
+    * otherwise - eval code of 'else' branch
 
     :param ProgramFlowInstruction instruction:
     """
@@ -504,6 +519,11 @@ def translate_if_goto_instruction(instruction):
 
 def translate_function_instruction(instruction):
     """Process VM function declaration instruction.
+
+    VM syntax: function <fname> <nvars>
+    ASM: insert label to jump into function and push to stack <nvars> of zeroes
+
+    Set up the local segment of the called function.
 
     :param FunctionInstruction instruction:
     """
@@ -525,6 +545,14 @@ def translate_function_instruction(instruction):
 
 def translate_call_instruction(instruction):
     """Process call VM instruction.
+
+    VM syntax: call <fname> <nargs>
+    ASM:
+    * Create return label and push it to stack.
+    * Save the caller's frame on stack (return address, LCL, ARG, THIS, THAT).
+    * Set callee's ARG and LCL.
+    * Jump to execute <fname>.
+    * Insert return label declaration.
 
     :param FunctionInstruction instruction:
     """
@@ -602,6 +630,14 @@ def translate_call_instruction(instruction):
 
 def translate_return_instruction(instruction):
     """Process return VM command.
+
+    VM syntax: return
+    ASM:
+    * Copy return address to R13.
+    * Restore segment pointers (from frame).
+    * Clean the stack.
+    * Set stack pointer.
+    * Jump to the return address within the caller's code.
 
     :param ReturnInstruction instruction:
     """

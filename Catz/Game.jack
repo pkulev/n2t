@@ -5,22 +5,30 @@ class Game {
     // Controllable character
     field Cat actor;
 
-    // Actor sprite direction: 0 -> left, 1 -> right
-    field int direction;
+    // Idle ticks counter (loop calls) to track idle animation
+    field int idle;
 
+    // Is game running?
     field boolean running;
 
-    constructor Game new() {        
+    // Border
+    static int width;
+    static int height;
 
-        let actor = Cat.new(0, 0);
-        let direction = 1;
+    constructor Game new() {
+
+        let width = 512;
+        let height = 256;
+
+        let actor = Cat.new(width, height);
+        let idle = 0;
         let running = true;
 
         return this;
     }
 
     method void dispose() {
-        do cat.dispose();
+        do actor.dispose();
         do Memory.deAlloc(this);
         return;
     }
@@ -32,11 +40,34 @@ class Game {
 
     method void events() {
         var char key;
+        var int maxIdle;
+        // after what amount of idle cycles to stop moving
+        var int stopMotionIdle;
+
         let key = Keyboard.keyPressed();
+        let maxIdle = actor.getMaxIdle();
+        let stopMotionIdle = 2000;  // ~1s
+
+        // increase idle ticks counter
+        if (~key) {
+            let idle = idle + 1;
+            // Activate idle animation
+            if (idle > maxIdle) {
+                let idle = maxIdle;  // prevent int overflow
+                do actor.stop();
+            } else {
+                // Not max idle but enough to stop motion
+                //if (idle > stopMotionIdle) {
+                //    do actor.stopMotion();
+                //}
+            }
+        }
+
+        // if (key = 32) { // space
         if (key = 81) {let running = false;}  // q
-        if (key = 130) {let direction = 0;}  // left arrow
-        if (key = 132) {let direction = 1;}  // right arrow
-        // if (key = 
+        if (key = 130) {do actor.moveLeft(); let idle = 0;}  // left arrow
+        if (key = 132) {do actor.moveRight(); let idle = 0;}  // right arrow
+        return;
     }
 
     method void update() {
@@ -53,9 +84,9 @@ class Game {
     method void loop() {
 
         while (running) {
-            // do events();
-            do cat.update();
-            do cat.render();
+            do events();
+            do update();
+            do render();
 
             do Sys.wait(0);
         }

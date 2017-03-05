@@ -5,9 +5,29 @@ class Cat {
 
     // Sprite coordinates
     field int x, y;
+    // Sprite deltas
+    field int dx;
 
-    // Sprite direction: 0 -> left, 1 -> right
+    // Sprite direction (for moving):
+    //  0 -> null
+    // -1 -> left
+    //  1 -> right
     field int direction;
+
+    // Sprite view direction (for proper animation frames):
+    // -1 -> left
+    //  1 -> right
+    field int viewDirection;
+
+    // Current animation frame:
+    // 0 -> standing left
+    // 1 -> standing right
+    // 2 -> running left
+    // 3 -> running right
+    field int animFrame;
+
+    // When activate idle animation
+    field int maxIdle;
 
     field int memAddress;
 
@@ -16,8 +36,10 @@ class Cat {
         let x = _x;
         let y = _y;
         let direction = 1;
+        let viewDirection = 1;
+        let dx = 1;
+        let maxIdle = 10000;  // ~5s
 
-        do render();
         return this;
     }
 
@@ -26,17 +48,28 @@ class Cat {
         return;
     }
 
-    /* render object to the screen. */
-    method void render() {
-        // do this manually via screen memory map
-        if (direction = 0) {do animStandLeft(0);}
-        if (direction = 1) {do animStandRight(0);}
-        // What
-        return;
+    /* Max idle getter. */
+    method int getMaxIdle() {
+        return maxIdle;
     }
 
     /* Update object's state. */
     method void update() {
+        //let x = x + (direction * dx);
+        return;
+    }
+
+    /* render object to the screen. */
+    method void render() {
+        var int offset;
+        let int offset = 0;
+
+        // do this manually via screen memory map
+        if (animFrame = 0) {do animStandLeft(offset);}
+        if (animFrame = 1) {do animStandRight(offset);}
+        if (animFrame = 2) {do animStuckLeft(offset);}
+        if (animFrame = 3) {do animStuckRight(offset);}
+
         return;
     }
 
@@ -46,58 +79,122 @@ class Cat {
         return;
     }
 
+    /* Notify object about movement direction. */
     method void moveLeft() {
-        // TODO
+        let direction = -1;
+        let viewDirection = -1;
+        let animFrame = 0;  // stay left
         return;
     }
 
     method void moveRight() {
-        // TODO
+        let direction = 1;
+        let viewDirection = 1;
+        let animFrame = 1;  // stay right
         return;
     }
 
+    method void stop() {
+        // if view left - wtf left
+        if (viewDirection = -1) {let animFrame = 2;}
+        // if view right - wtf right
+        if (viewDirection = 1) {let animFrame = 3;}
+        let direction = 0;
 
-    /* Cat stays and looks right */
-    method void animStandRight(int location) {
-	let memAddress = 16384+location;
-	do Memory.poke(memAddress+0, 0);
-	do Memory.poke(memAddress+32, 0);
-	do Memory.poke(memAddress+64, 0);
-	do Memory.poke(memAddress+96, 0);
-	do Memory.poke(memAddress+128, 12);
-	do Memory.poke(memAddress+160, 2050);
-	do Memory.poke(memAddress+192, 14338);
-	do Memory.poke(memAddress+224, 30722);
-	do Memory.poke(memAddress+256, 15332);
-	do Memory.poke(memAddress+288, 8188);
-	do Memory.poke(memAddress+320, 8188);
-	do Memory.poke(memAddress+352, 4092);
-	do Memory.poke(memAddress+384, 3644);
-	do Memory.poke(memAddress+416, 1048);
-	do Memory.poke(memAddress+448, 1032);
-	do Memory.poke(memAddress+480, 3096);
-	return;
+        return;
+    }
+
+    method void stopMotion() {
+        // TODO: fix this unconvinient mapping, maybe implement dicts
+        if (direction = -1) {let animFrame = 0;}
+        if (direction = 1) {let animFrame = 1;}
+        let direction = 0;
+        return;
     }
 
     /* Cat stays and looks left */
     method void animStandLeft(int location) {
-	let memAddress = 16384+location;
-	do Memory.poke(memAddress+0, 0);
-	do Memory.poke(memAddress+32, 0);
-	do Memory.poke(memAddress+64, 0);
-	do Memory.poke(memAddress+96, 0);
-	do Memory.poke(memAddress+128, 12);
-	do Memory.poke(memAddress+160, 2050);
-	do Memory.poke(memAddress+192, 14338);
-	do Memory.poke(memAddress+224, 30722);
-	do Memory.poke(memAddress+256, 15332);
-	do Memory.poke(memAddress+288, 8188);
-	do Memory.poke(memAddress+320, 8188);
-	do Memory.poke(memAddress+352, 4092);
-	do Memory.poke(memAddress+384, 3644);
-	do Memory.poke(memAddress+416, 1048);
-	do Memory.poke(memAddress+448, 1032);
-	do Memory.poke(memAddress+480, 3096);
-	return;
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 0);
+        do Memory.poke(memAddress+64, 0);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, 12288);
+        do Memory.poke(memAddress+160, 16400);
+        do Memory.poke(memAddress+192, 16412);
+        do Memory.poke(memAddress+224, 16414);
+        do Memory.poke(memAddress+256, 10204);
+        do Memory.poke(memAddress+288, 16376);
+        do Memory.poke(memAddress+320, 16376);
+        do Memory.poke(memAddress+352, 16368);
+        do Memory.poke(memAddress+384, 15472);
+        do Memory.poke(memAddress+416, 6240);
+        do Memory.poke(memAddress+448, 4128);
+        do Memory.poke(memAddress+480, 6192);
+        return;
+    }
+
+    /* Cat stays and looks right */
+    method void animStandRight(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 0);
+        do Memory.poke(memAddress+64, 0);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, 12);
+        do Memory.poke(memAddress+160, 2050);
+        do Memory.poke(memAddress+192, 14338);
+        do Memory.poke(memAddress+224, 30722);
+        do Memory.poke(memAddress+256, 15332);
+        do Memory.poke(memAddress+288, 8188);
+        do Memory.poke(memAddress+320, 8188);
+        do Memory.poke(memAddress+352, 4092);
+        do Memory.poke(memAddress+384, 3644);
+        do Memory.poke(memAddress+416, 1048);
+        do Memory.poke(memAddress+448, 1032);
+        do Memory.poke(memAddress+480, 3096);
+        return;
+    }
+
+    method void animStuckLeft(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 14);
+        do Memory.poke(memAddress+32, 8);
+        do Memory.poke(memAddress+64, 4);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, 12292);
+        do Memory.poke(memAddress+160, 16400);
+        do Memory.poke(memAddress+192, 16412);
+        do Memory.poke(memAddress+224, 16414);
+        do Memory.poke(memAddress+256, 10204);
+        do Memory.poke(memAddress+288, 16376);
+        do Memory.poke(memAddress+320, 16376);
+        do Memory.poke(memAddress+352, 16368);
+        do Memory.poke(memAddress+384, 15472);
+        do Memory.poke(memAddress+416, 6240);
+        do Memory.poke(memAddress+448, 4128);
+        do Memory.poke(memAddress+480, 6192);
+        return;
+    }
+
+    method void animStuckRight(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 28672);
+        do Memory.poke(memAddress+32, 4096);
+        do Memory.poke(memAddress+64, 8192);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, 8204);
+        do Memory.poke(memAddress+160, 2050);
+        do Memory.poke(memAddress+192, 14338);
+        do Memory.poke(memAddress+224, 30722);
+        do Memory.poke(memAddress+256, 15332);
+        do Memory.poke(memAddress+288, 8188);
+        do Memory.poke(memAddress+320, 8188);
+        do Memory.poke(memAddress+352, 4092);
+        do Memory.poke(memAddress+384, 3644);
+        do Memory.poke(memAddress+416, 1560);
+        do Memory.poke(memAddress+448, 1032);
+        do Memory.poke(memAddress+480, 3096);
+        return;
     }
 }

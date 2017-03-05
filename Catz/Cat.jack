@@ -26,8 +26,8 @@ class Cat {
     // 3 -> running right
     field int animFrame;
 
-    // When activate idle animation
-    field int maxIdle;
+    // Offset for last rendered sprite. Used for cleaning video memory.
+    field int last_offset;
 
     field int memAddress;
 
@@ -37,9 +37,9 @@ class Cat {
         let y = _y;
         let direction = 0;  // don't move
         let viewDirection = 1;  // but look right
+        let animFrame = 1;
         let dx = 1;
         let dy = 1;
-        let maxIdle = 10000;  // ~5s
 
         return this;
     }
@@ -49,37 +49,41 @@ class Cat {
         return;
     }
 
-    /* Max idle getter. */
-    method int getMaxIdle() {
-        return maxIdle;
+    method int memOffset() {
+        return (x * 32) + (y / 16);
     }
 
     /* Update object's state. */
     method void update() {
         //let x = x + (direction * dx);
+        // save last offset
+        let last_offset = memOffset();
         let y = y + (direction * dy);
         if (y < 0) {let y = 512 - 16;}
         if (y > (512 - 16)) {let y = 0;}
         return;
     }
 
-    /* render object to the screen. */
-    method void render() {
-        var int offset;
-        let offset = (x * 32) + (y / 16);
-
+    method void renderFrame(int offset) {
         // do this manually via screen memory map
         if (animFrame = 0) {do animStandLeft(offset);}
         if (animFrame = 1) {do animStandRight(offset);}
         if (animFrame = 2) {do animStuckLeft(offset);}
         if (animFrame = 3) {do animStuckRight(offset);}
-
         return;
     }
 
-    method void erase() {
-        do Screen.setColor(false);
-        // do other things
+    /* Render object to the screen. */
+    method void render() {
+        var int offset;
+        let offset = memOffset();
+        if (~(offset = last_offset)) {
+            do eraseSprite(last_offset);
+        }
+
+        // Render current frame
+        do renderFrame(offset);
+
         return;
     }
 
@@ -113,6 +117,28 @@ class Cat {
         if (direction = -1) {let animFrame = 0;}
         if (direction = 1) {let animFrame = 1;}
         let direction = 0;
+        return;
+    }
+
+    /* Erase 16x16 sprite */
+    method void eraseSprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 0);
+        do Memory.poke(memAddress+64, 0);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, 0);
+        do Memory.poke(memAddress+160, 0);
+        do Memory.poke(memAddress+192, 0);
+        do Memory.poke(memAddress+224, 0);
+        do Memory.poke(memAddress+256, 0);
+        do Memory.poke(memAddress+288, 0);
+        do Memory.poke(memAddress+320, 0);
+        do Memory.poke(memAddress+352, 0);
+        do Memory.poke(memAddress+384, 0);
+        do Memory.poke(memAddress+416, 0);
+        do Memory.poke(memAddress+448, 0);
+        do Memory.poke(memAddress+480, 0);
         return;
     }
 

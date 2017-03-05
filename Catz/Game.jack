@@ -5,6 +5,9 @@ class Game {
     // Controllable character
     field Cat actor;
 
+    // Game loop relative speed
+    field int tick;
+
     // Idle ticks counter (loop calls) to track idle animation
     field int idle;
 
@@ -22,6 +25,7 @@ class Game {
 
         // bottom, minus sprite height
         let actor = Cat.new(256-16, 0);
+        let tick = 10; // 10 ticks ~= 0.1s on my machine
         let idle = 0;
         let running = true;
 
@@ -34,20 +38,23 @@ class Game {
         return;
     }
 
+    /* Exit. */
     method void exit() {
         let running = false;
         return;
     }
 
+    /* Handle events. */
     method void events() {
         var char key;
+        // amount of ticks after set idle animation for actor
         var int maxIdle;
         // after what amount of idle cycles to stop moving
         var int stopMotionIdle;
 
         let key = Keyboard.keyPressed();
-        let maxIdle = actor.getMaxIdle();
-        let stopMotionIdle = 2000;  // ~1s
+        let maxIdle = tick * 40;  // ~4s
+        let stopMotionIdle = tick * 5;  // ~0.5s
 
         // increase idle ticks counter
         if (~key) {
@@ -58,14 +65,14 @@ class Game {
                 do actor.stop();
             } else {
                 // Not max idle but enough to stop motion
-                //if (idle > stopMotionIdle) {
-                //    do actor.stopMotion();
-                //}
+                if (idle > stopMotionIdle) {
+                    do actor.stopMotion();
+                }
             }
         }
 
         // if (key = 32) { // space
-        if (key = 81) {let running = false;}  // q
+        if (key = 81) {do exit();}  // q
         if (key = 130) {do actor.moveLeft(); let idle = 0;}  // left arrow
         if (key = 132) {do actor.moveRight(); let idle = 0;}  // right arrow
         return;
@@ -89,7 +96,7 @@ class Game {
             do update();
             do render();
 
-            do Sys.wait(15);
+            do Sys.wait(tick);
         }
         return;
     }

@@ -15,6 +15,11 @@ class Food {
 
     // Position
     field int x, y;
+    field int dx, dy;
+
+    // Rendering offset
+    field int offset;
+    field int last_offset;
 
     field int memAddress;
 
@@ -22,6 +27,8 @@ class Food {
         let sprite = _sprite;
         let x = _x;
         let y = _y;
+	let dx = 1;
+	let dy = 1;
 
         return this;
     }
@@ -31,10 +38,21 @@ class Food {
         return;
     }
 
+    /* Getters. */
+    method int getx() {return x;}
+    method int gety() {return y;}
+
+    /* Update state. */
     method void update() {
-        return;
+	let last_offset = Utils.vmemOffset(x, y);
+	let x = x + dx;
+	do Output.moveCursor(20, 20);
+	do Output.printInt(x);
+	if (x > (256 - 16)) {let x = 32;}
+	return;
     }
 
+    /* Render current sprite. */
     method void renderSprite(int offset) {
         if (sprite = 0) {do chickenSprite(offset);}
         if (sprite = 1) {do cherrySprite(offset);}
@@ -47,10 +65,40 @@ class Food {
     }
 
     method void render() {
-        var int offset;
-        let offset = (32 * x) + (y / 16);
-        do renderSprite(offset);
+	let offset = Utils.vmemOffset(x, y);
+	if (~(offset = last_offset)) {
+	    do eraseSprite(last_offset);
+	}
 
+	// Render current sprite
+	do renderSprite(offset);
+        return;
+    }
+
+    method void respawn() {
+	let x = 32;
+	return;
+    }
+
+    /* Erase 16x16 sprite */
+    method void eraseSprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 0);
+        do Memory.poke(memAddress+64, 0);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, 0);
+        do Memory.poke(memAddress+160, 0);
+        do Memory.poke(memAddress+192, 0);
+        do Memory.poke(memAddress+224, 0);
+        do Memory.poke(memAddress+256, 0);
+        do Memory.poke(memAddress+288, 0);
+        do Memory.poke(memAddress+320, 0);
+        do Memory.poke(memAddress+352, 0);
+        do Memory.poke(memAddress+384, 0);
+        do Memory.poke(memAddress+416, 0);
+        do Memory.poke(memAddress+448, 0);
+        do Memory.poke(memAddress+480, 0);
         return;
     }
 

@@ -49,15 +49,15 @@ class Cat {
         return;
     }
 
-    method int memOffset() {
-        return (x * 32) + (y / 16);
-    }
+    /* Getters. */
+    method int getx() {return x;}
+    method int gety() {return y;}
 
     /* Update object's state. */
     method void update() {
         //let x = x + (direction * dx);
         // save last offset
-        let last_offset = memOffset();
+        let last_offset = Utils.vmemOffset(x, y);
         let y = y + (direction * dy);
         if (y < 0) {let y = 512 - 16;}
         if (y > (512 - 16)) {let y = 0;}
@@ -76,7 +76,7 @@ class Cat {
     /* Render object to the screen. */
     method void render() {
         var int offset;
-        let offset = memOffset();
+        let offset = Utils.vmemOffset(x, y);
         if (~(offset = last_offset)) {
             do eraseSprite(last_offset);
         }

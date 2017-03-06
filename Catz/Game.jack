@@ -12,8 +12,13 @@ class Game {
     field Array foods;
     field int nfoods;
 
+    // Current score
+    field int score;
+    field int lastScore;
+    
+
     // EXPERIMENTAL
-    field List objects;
+    //field List objects;
 
     // Game loop relative speed
     field int tick;
@@ -35,12 +40,14 @@ class Game {
 
         // bottom, minus sprite height
         let actor = Cat.new(256-16, 0);
-        let objects = List.new(actor, null);
+        //let objects = List.new(actor, null);
 
         let tick = 10; // 10 ticks ~= 0.1s on my machine
         let idle = 0;
         let running = true;
 
+	let score = 0;
+	let lastScore = -1;  // draw score first time
         let nfoods = 10;
         let foodSpawns = Array.new(nfoods);
         let foods = Array.new(nfoods);
@@ -54,10 +61,10 @@ class Game {
         var Array tmp;
         let i = 0;
         while (~(i = nfoods)) {
-            let foodSpawns[i] = Vec.new(0, 50 * i);
+            let foodSpawns[i] = Vec.new(32, 50 * i);
             let tmp = foodSpawns[i];
             let foods[i] = Food.new((i / 2) + 1, tmp[0], tmp[1]);
-            do objects.append(foods[i]);
+            //do objects.append(foods[i]);
             let i = i + 1;
         }
         return;
@@ -133,6 +140,12 @@ class Game {
         var int i;
         var Food data;
 
+	if (lastScore < score) {
+	    do Output.moveCursor(0, 0);
+	    do Output.printString("Score: ");
+	    do Output.printInt(score);
+	    let lastScore = score;
+	}
         // Render actor
         do actor.render();
 

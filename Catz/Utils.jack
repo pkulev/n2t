@@ -1,0 +1,23 @@
+/** Utils library. */
+
+class Utils {
+
+    /* Offset for direct rendering to memory. */
+    function int vmemOffset(int x, int y) {
+	return (x * 32) + (y / 16);
+    }
+
+    /* Check if rectangles (x1, y1) and (x2, y2). */
+    function boolean collide(int x1, int y1, int x2, int y2) {
+	var boolean collides;
+	let boolean = false;
+	if (
+	    (x1 < (x2 + 16)) &
+	    ((x1 + 16) > x2) &
+	    (y1 < (y2 + 16)) &
+	    ((y1 + 16) > y2)) {
+	    return true;
+	}
+	return false;    
+    }
+}

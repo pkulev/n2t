@@ -52,7 +52,7 @@ class Game {
 	let lastScore = -1;  // draw score first time
         let lives = 3;
         let lastLives = 4; // draw lives first time
-        let nfoods = 10;
+        let nfoods = 6;
         let foodSpawns = Array.new(nfoods);
         let foods = Array.new(nfoods);
         do fillFoodSpawns();
@@ -65,9 +65,9 @@ class Game {
         var Array tmp;
         let i = 0;
         while (~(i = nfoods)) {
-            let foodSpawns[i] = Vec.new(32, 50 * i);
+            let foodSpawns[i] = Vec.new(32, 64 + (64 * i));
             let tmp = foodSpawns[i];
-            let foods[i] = Food.new((i / 2) + 1, tmp[0], tmp[1]);
+            let foods[i] = Food.new(i, tmp[0], tmp[1]);
             //do objects.append(foods[i]);
             let i = i + 1;
         }
@@ -203,6 +203,13 @@ class Game {
             let data = foods[i];
             do data.render();
             let i = i + 1;
+        }
+
+        if (lives = 0) {
+            do Output.moveCursor(20, 20);
+            do Output.printString("Game Over. Final score: ");
+            do Output.printInt(score);
+            let running = false;
         }
         return;
     }

@@ -68,8 +68,6 @@ class Food {
     method void update() {
 	let last_offset = Utils.vmemOffset(x, y);
 	let x = x + dx;
-	do Output.moveCursor(20, 20);
-	do Output.printInt(x);
 	if (x > (256 - 16)) {let x = 32;}
 	return;
     }

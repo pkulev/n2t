@@ -1,0 +1,31 @@
+/** Food models. */
+
+class Food {
+
+    // Kind of food:
+    // --good--
+    // 0 - chicken
+    // 1 - meat
+    // 2 - milk box
+    // --bad--
+    // 3 - delicious ship anchor
+    // 4 - steel crate
+    // 5 - bomb
+    field int sprite;
+
+    // Position
+    field int x, y;
+    
+    constructor Food new(int _sprite, int _x, int _y) {
+        let sprite = _sprite;
+        let x = _x;
+        let y = _y;
+
+        return this;
+    }
+
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+}

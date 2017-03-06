@@ -15,7 +15,9 @@ class Game {
     // Current score
     field int score;
     field int lastScore;
-    
+    // Lives. 0 -> game over
+    field int lives;
+    field int lastLives;
 
     // EXPERIMENTAL
     //field List objects;
@@ -48,6 +50,8 @@ class Game {
 
 	let score = 0;
 	let lastScore = -1;  // draw score first time
+        let lives = 3;
+        let lastLives = 4; // draw lives first time
         let nfoods = 10;
         let foodSpawns = Array.new(nfoods);
         let foods = Array.new(nfoods);
@@ -80,6 +84,30 @@ class Game {
     /* Exit. */
     method void exit() {
         let running = false;
+        return;
+    }
+
+    method void checkCollisions() {
+        var int i;
+        var Food food;
+
+        do actor.update();
+
+        // Check food collisions
+        let i = 0;
+        while (~(i = nfoods)) {
+            let food = foods[i];
+            if (Utils.collide(actor.getx(), actor.gety(),
+                              food.getx(), food.gety())
+                ) {
+                if (food.good()) {
+                    let score = score + food.getScore();
+                } else {
+                    let lives = lives - 1;
+                }
+            }
+            let i = i + 1;
+        }
         return;
     }
 
@@ -120,16 +148,26 @@ class Game {
     /* Update objects' state. */
     method void update() {
         var int i;
-        var Food data;
+        var Food food;
 
         // Update actor's state
         do actor.update();
 
-        // Update state of foods
+        // Update state of foods and check collisions
         let i = 0;
         while (~(i = nfoods)) {
-            let data = foods[i];
-            do data.update();
+            let food = foods[i];
+            do food.update();
+            if (Utils.collide(actor.getx(), actor.gety(),
+                              food.getx(), food.gety())
+                ) {
+                if (food.good()) {
+                    let score = score + food.getScore();
+                } else {
+                    let lives = lives - 1;
+                }
+                do food.respawn();
+            }
             let i = i + 1;
         }
         return;
@@ -140,12 +178,22 @@ class Game {
         var int i;
         var Food data;
 
+        // Optimization, do not call Output if no need to update values
 	if (lastScore < score) {
 	    do Output.moveCursor(0, 0);
 	    do Output.printString("Score: ");
 	    do Output.printInt(score);
 	    let lastScore = score;
 	}
+
+        // Here too
+        if (~(lives = lastLives)) {
+            do Output.moveCursor(0, 20);
+            do Output.printString("Lives: ");
+            do Output.printInt(lives);
+            let lastLives = lives;
+        }
+
         // Render actor
         do actor.render();
 

@@ -13,6 +13,8 @@ class Food {
     // 5 - bomb
     field int sprite;
 
+    field int score;
+
     // Position
     field int x, y;
     field int dx, dy;
@@ -30,6 +32,8 @@ class Food {
 	let dx = 1;
 	let dy = 1;
 
+        do setScore();
+
         return this;
     }
 
@@ -38,9 +42,27 @@ class Food {
         return;
     }
 
+    method boolean good() {
+        if ((sprite > 0) & (sprite < 3)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /* Set score for item. */
+    method void setScore() {
+        if (sprite = 0) {let score = 5;}
+        if (sprite = 1) {let score = 1;}
+        if (sprite = 2) {let score = 10;}
+        if (~(good())) {let score = -1;}
+        return;
+    }
+
     /* Getters. */
     method int getx() {return x;}
     method int gety() {return y;}
+    method int getScore() {return score;}
 
     /* Update state. */
     method void update() {

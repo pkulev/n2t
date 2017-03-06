@@ -5,7 +5,7 @@ class Food {
     // Kind of food:
     // --good--
     // 0 - chicken
-    // 1 - meat
+    // 1 - cherry
     // 2 - milk box
     // --bad--
     // 3 - delicious ship anchor
@@ -15,7 +15,9 @@ class Food {
 
     // Position
     field int x, y;
-    
+
+    field int memAddress;
+
     constructor Food new(int _sprite, int _x, int _y) {
         let sprite = _sprite;
         let x = _x;
@@ -26,6 +28,155 @@ class Food {
 
     method void dispose() {
         do Memory.deAlloc(this);
+        return;
+    }
+
+    method void update() {
+        return;
+    }
+
+    method void renderSprite(int offset) {
+        if (sprite = 0) {do chickenSprite(offset);}
+        if (sprite = 1) {do cherrySprite(offset);}
+        if (sprite = 2) {do milkSprite(offset);}
+        if (sprite = 3) {do anchorSprite(offset);}
+        if (sprite = 4) {do crateSprite(offset);}
+        if (sprite = 5) {do bombSprite(offset);}
+
+        return;
+    }
+
+    method void render() {
+        var int offset;
+        let offset = (32 * x) + (y / 16);
+        do renderSprite(offset);
+
+        return;
+    }
+
+    method void chickenSprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 12288);
+        do Memory.poke(memAddress+64, 20480);
+        do Memory.poke(memAddress+96, -28672);
+        do Memory.poke(memAddress+128, 27128);
+        do Memory.poke(memAddress+160, 5636);
+        do Memory.poke(memAddress+192, 3074);
+        do Memory.poke(memAddress+224, 1025);
+        do Memory.poke(memAddress+256, 1425);
+        do Memory.poke(memAddress+288, 614);
+        do Memory.poke(memAddress+320, 504);
+        do Memory.poke(memAddress+352, 0);
+        do Memory.poke(memAddress+384, 0);
+        do Memory.poke(memAddress+416, 0);
+        do Memory.poke(memAddress+448, 0);
+        do Memory.poke(memAddress+480, 0);
+        return;
+    }
+
+    method void cherrySprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 256);
+        do Memory.poke(memAddress+32, 128);
+        do Memory.poke(memAddress+64, 128);
+        do Memory.poke(memAddress+96, 384);
+        do Memory.poke(memAddress+128, 576);
+        do Memory.poke(memAddress+160, 1056);
+        do Memory.poke(memAddress+192, 1056);
+        do Memory.poke(memAddress+224, 2064);
+        do Memory.poke(memAddress+256, 2056);
+        do Memory.poke(memAddress+288, 7176);
+        do Memory.poke(memAddress+320, 8732);
+        do Memory.poke(memAddress+352, 16674);
+        do Memory.poke(memAddress+384, 8769);
+        do Memory.poke(memAddress+416, 7202);
+        do Memory.poke(memAddress+448, 28);
+        do Memory.poke(memAddress+480, 0);
+        return;
+    }
+
+    method void milkSprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 2016);
+        do Memory.poke(memAddress+32, 2064);
+        do Memory.poke(memAddress+64, 4104);
+        do Memory.poke(memAddress+96, 16380);
+        do Memory.poke(memAddress+128, 8196);
+        do Memory.poke(memAddress+160, 11316);
+        do Memory.poke(memAddress+192, 11892);
+        do Memory.poke(memAddress+224, 11220);
+        do Memory.poke(memAddress+256, 10644);
+        do Memory.poke(memAddress+288, 11316);
+        do Memory.poke(memAddress+320, 11316);
+        do Memory.poke(memAddress+352, 11316);
+        do Memory.poke(memAddress+384, 11316);
+        do Memory.poke(memAddress+416, 8196);
+        do Memory.poke(memAddress+448, 8196);
+        do Memory.poke(memAddress+480, 16380);
+        return;
+    }
+
+    method void anchorSprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 960);
+        do Memory.poke(memAddress+32, 1632);
+        do Memory.poke(memAddress+64, 1056);
+        do Memory.poke(memAddress+96, 1632);
+        do Memory.poke(memAddress+128, 960);
+        do Memory.poke(memAddress+160, 384);
+        do Memory.poke(memAddress+192, 384);
+        do Memory.poke(memAddress+224, 384);
+        do Memory.poke(memAddress+256, 384);
+        do Memory.poke(memAddress+288, 8580);
+        do Memory.poke(memAddress+320, 29070);
+        do Memory.poke(memAddress+352, -1633);
+        do Memory.poke(memAddress+384, 8580);
+        do Memory.poke(memAddress+416, 8580);
+        do Memory.poke(memAddress+448, 5544);
+        do Memory.poke(memAddress+480, 4080);
+        return;
+    }
+
+    method void crateSprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 0);
+        do Memory.poke(memAddress+64, 0);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, -1);
+        do Memory.poke(memAddress+160, -32767);
+        do Memory.poke(memAddress+192, -32767);
+        do Memory.poke(memAddress+224, -4105);
+        do Memory.poke(memAddress+256, -28663);
+        do Memory.poke(memAddress+288, -32767);
+        do Memory.poke(memAddress+320, -32767);
+        do Memory.poke(memAddress+352, -32767);
+        do Memory.poke(memAddress+384, -32767);
+        do Memory.poke(memAddress+416, -32767);
+        do Memory.poke(memAddress+448, -32767);
+        do Memory.poke(memAddress+480, -1);
+        return;
+    }
+
+    method void bombSprite(int location) {
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 960);
+        do Memory.poke(memAddress+32, 17472);
+        do Memory.poke(memAddress+64, -22400);
+        do Memory.poke(memAddress+96, 19424);
+        do Memory.poke(memAddress+128, 2592);
+        do Memory.poke(memAddress+160, 18976);
+        do Memory.poke(memAddress+192, 12832);
+        do Memory.poke(memAddress+224, 544);
+        do Memory.poke(memAddress+256, 1584);
+        do Memory.poke(memAddress+288, 3096);
+        do Memory.poke(memAddress+320, 4548);
+        do Memory.poke(memAddress+352, 12838);
+        do Memory.poke(memAddress+384, 8738);
+        do Memory.poke(memAddress+416, 12614);
+        do Memory.poke(memAddress+448, 6284);
+        do Memory.poke(memAddress+480, 4088);
         return;
     }
 }

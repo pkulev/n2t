@@ -43,7 +43,7 @@ class Food {
     }
 
     method boolean good() {
-        if ((sprite > 0) & (sprite < 3)) {
+        if ((sprite > -1) & (sprite < 3)) {
             return true;
         } else {
             return false;

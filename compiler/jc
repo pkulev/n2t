@@ -249,7 +249,317 @@ def tokens_to_xml(tokens):
 # --> PARSER
 
 def parse(tokens):
-    return tokens
+    return CompilerEngine(tokens).process()
+
+
+def check_token(token, type_, *allowed):
+    if allowed:
+        return isinstance(token, type_) and token.check(allowed)
+    return isinstance(token, type_)
+
+
+def ensure(type_):
+
+    def outer(func):
+
+        @functools.wraps(func)
+        def inner(self, *allowed):
+
+            return func(*allowed)
+
+        return inner
+    return outer
+
+
+class CompilerEngine(object):
+
+    def __init__(self, tokens):
+        self._tokens = tokens
+
+        self._xml_out = ""
+        self._indent = 0
+        self._pos = 0
+
+    def process(self):
+        self._process_class_declaration()
+        if self._pos != len(self._tokens):
+            raise SyntaxError("There are leftovers")
+        return self._xml_out
+
+    def _xml(self, node):
+        indent = "  " * self._indent
+        self._xml_out += "{0}{1}\n".format(indent, node)
+
+    def _write_token(self, token):
+        self._xml(token.to_xml())
+        self._pos += 1
+
+    @contextlib.contextmanager
+    def _rule(self, rule):
+        try:
+            self._xml("<{0}>".format(rule))
+            self._indent += 1
+            yield
+        finally:
+            self._indent -= 1
+            self._xml("</{0}>".format(rule))
+
+    def _next_token(self):
+        return self._tokens[self._pos]
+
+    def _check_next(self, type_, *allowed):
+        return check_token(self._next_token(), type_, *allowed)
+
+    def _next_keyword(self, *allowed):
+        if not self._check_next(Keyword, *allowed):
+            raise TokenNotExpected(repr(allowed))
+        self._write_token(self._next_token())
+
+    def _next_symbol(self, *allowed):
+        if not self._check_next(Symbol, *allowed):
+            raise TokenNotExpected(repr(allowed))
+        self._write_token(self._next_token())
+
+    def _next_identifier(self, *allowed):
+        if not self._check_next(Identifier, *allowed):
+            raise TokenNotExpected(repr(allowed))
+        self._write_token(self._next_token())
+
+    def _next_type(self, *allowed):
+        token = self._next_token()
+        if isinstance(token, Identifier):
+            self._next_identifier()
+        else:
+            self._next_keyword(CHAR, BOOLEAN, INT)
+
+    def _process_class_declaration(self):
+        with self._rule("class"):
+            self._next_keyword(CLASS)
+            self._next_identifier()
+            self._next_symbol("{")
+            self._next_class_variable_declarations()
+            self._next_subroutine_declarations()
+            self._next_symbol("}")
+
+    def _next_class_variable_declarations(self):
+        while self._check_next(Keyword, FIELD, STATIC):
+            self._next_class_variable_declaration()
+
+    def _next_class_variable_declaration(self):
+        with self._rule("classVarDec"):
+            self._next_keyword(STATIC, FIELD)
+            self._next_variable_declaration()
+
+    def _next_variable_declaration(self):
+        self._next_type()
+        self._next_identifier()
+
+        while not self._check_next(Symbol, ";"):
+            self._next_symbol(",")
+            self._next_identifier()
+
+        self._next_symbol(";")
+
+    def _next_subroutine_declarations(self):
+        while self._check_next(Keyword, CONSTRUCTOR, FUNCTION, METHOD):
+            self._next_subroutine_declaration()
+
+    def _next_subroutine_declaration(self):
+        with self._rule("subroutineDec"):
+            self._next_keyword(CONSTRUCTOR, FUNCTION, METHOD)
+
+            if self._check_next(Keyword, VOID):
+                self._next_keyword(VOID)
+            else:
+                self._next_type()
+
+            self._next_identifier()
+            self._next_symbol("(")
+            self._next_plist()
+            self._next_symbol(")")
+            self._next_subroutine_body()
+
+    def _next_plist(self):
+        with self._rule("parameterList"):
+            first = True
+            while not self._check_next(Symbol, ")"):
+                if first:
+                    first = False
+                else:
+                    self._next_symbol(",")
+
+                self._next_type()
+                self._next_identifier()
+
+    def _next_subroutine_body(self):
+        with self._rule("subroutineBody"):
+            self._next_symbol("{")
+            while self._check_next(Keyword, VAR):
+                self._next_subroutine_var_declaration()
+
+            self._next_statements()
+            self._next_symbol("}")
+
+    def _next_subroutine_var_declaration(self):
+        with self._rule("varDec"):
+            self._next_keyword(VAR)
+            self._next_variable_declaration()
+
+    def _next_statements(self):
+        with self._rule("statements"):
+            done = False
+            while not done:
+                if self._check_next(Keyword, LET):
+                    self._next_let_statement()
+                elif self._check_next(Keyword, IF):
+                    self._next_if_statement()
+                elif self._check_next(Keyword, WHILE):
+                    self._next_while_statement()
+                elif self._check_next(Keyword, DO):
+                    self._next_do_statement()
+                elif self._check_next(Keyword, RETURN):
+                    self._next_return_statement()
+                else:
+                    done = True
+
+    def _next_let_statement(self):
+        with self._rule("letStatement"):
+            self._next_keyword(LET)
+            self._next_identifier()
+
+            # Array subscription
+            if self._check_next(Symbol, "["):
+                self._next_symbol("[")
+                self._next_expression()
+                self._next_symbol("]")
+
+            self._next_symbol("=")
+            self._next_expression()
+            self._next_symbol(";")
+
+    def _next_if_statement(self):
+        with self._rule("ifStatement"):
+            self._next_keyword(IF)
+            self._next_symbol("(")
+            self._next_expression()
+            self._next_symbol(")")
+            self._next_symbol("{")
+            self._next_statements()
+            self._next_symbol("}")
+
+            # Else branch
+            if self._check_next(Keyword, ELSE):
+                self._next_keyword(ELSE)
+                self._next_symbol("{")
+                self._next_statements()
+                self._next_symbol("}")
+
+    def _next_while_statement(self):
+        with self._rule("whileStatement"):
+            self._next_keyword(WHILE)
+            self._next_symbol("(")
+            self._next_expression()
+            self._next_symbol(")")
+            self._next_symbol("{")
+            self._next_statements()
+            self._next_symbol("}")
+
+    def _next_do_statement(self):
+        with self._rule("doStatement"):
+            self._next_keyword(DO)
+            self._next_subroutine_call()
+            self._next_symbol(";")
+
+    def _next_subroutine_call(self):
+        self._next_identifier()
+        if self._check_next(Symbol, "."):
+            self._next_symbol(".")
+            self._next_identifier()
+
+        self._next_symbol("(")
+        self._next_expression_list()
+        self._next_symbol(")")
+
+    def _next_return_statement(self):
+        with self._rule("returnStatement"):
+            self._next_keyword(RETURN)
+            if not self._check_next(Symbol, ";"):
+                self._next_expression()
+            self._next_symbol(";")
+
+    def _next_expression(self):
+        with self._rule("expression"):
+            self._expand_term()
+
+            if self._check_next(Symbol, *tuple(OPS)):
+                self._next_symbol(*tuple(OPS))
+                self._expand_term()
+
+    def _next_expression_list(self):
+        with self._rule("expressionList"):
+            first = True
+            while not self._check_next(Symbol, ")"):
+                if first:
+                    first = False
+                else:
+                    self._next_symbol(",")
+                self._next_expression()
+
+    def _expand_term(self):
+        with self._rule("term"):
+            token = self._next_token()
+
+            # integer or string constant
+            if isinstance(token, (Integer, String)):
+                return self._write_token(token)
+
+            # keyword constants
+            elif isinstance(token, Keyword):
+                return self._next_keyword(TRUE, FALSE, NULL, THIS)
+
+            # array subscription
+            elif self._look_ahead_array_subscr():
+                self._next_identifier()
+                self._next_symbol("[")
+                self._next_expression()
+                self._next_symbol("]")
+
+            # subroutine call
+            elif self._look_ahead_subroutine_call():
+                self._next_subroutine_call()
+
+            # variable
+            elif isinstance(token, Identifier):
+                self._next_identifier()
+
+            # (expression)
+            elif self._check_next(Symbol, "("):
+                self._next_symbol("(")
+                self._next_expression()
+                self._next_symbol(")")
+
+            # unary operations
+            elif self._check_next(Symbol, *tuple(UNARY_OPS)):
+                self._next_symbol(*tuple(UNARY_OPS))
+                self._expand_term()
+
+            else:
+                raise UnknownTokenError("token totally unexpected")
+
+    def _look_ahead_array_subscr(self):
+        if self._pos + 1 < len(self._tokens):
+            token = self._tokens[self._pos + 1]
+            return (
+                self._check_next(Identifier) and
+                check_token(token, Symbol, "["))
+
+    def _look_ahead_subroutine_call(self):
+        if self._pos + 1 < len(self._tokens):
+            token = self._tokens[self._pos + 1 ]
+            return (
+                self._check_next(Identifier) and (
+                    check_token(token, Symbol, "(") or
+                    check_token(token, Symbol, ".")))
 
 # <-- PARSER
 

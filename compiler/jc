@@ -1,0 +1,302 @@
+#!/usr/bin/env python
+
+"""JACK VM translator to HACK assembler.
+
+Translates JACK Virtual Machine language to HACK assembly language.
+"""
+
+import argparse
+from collections import namedtuple
+import functools
+import glob
+import itertools
+import logging
+import os
+import re
+from xml.sax import saxutils
+
+
+DEBUG = False
+"""Debug mode."""
+
+FILENAME = None
+"""Current file name for translation."""
+
+
+# --> TOKENIZER
+
+class SyntaxError(Exception):
+    """Base class for VM->ASM translation exceptions."""
+
+    def __init__(self, msg):
+        super(SyntaxError, self).__init__(msg)
+
+
+class UnknownTokenError(SyntaxError):
+    """Got unknown token."""
+
+    #def __init__(self, lineno, instruction, args):
+    def __init__(self, token):
+        super(UnknownTokenError, self).__init__(
+            "Unknown token: %s".format(token))
+
+
+COMMENT_SYMBOL = "//"
+
+COMMENT           = "commentary"
+MULTILINE_COMMENT = "multiline commentary"
+
+BOOLEAN = "boolean"
+CHAR = "char"
+CLASS = "class"
+CONSTRUCTOR = "constructor"
+DO = "do"
+ELSE = "else"
+FALSE = "false"
+FIELD = "field"
+FUNCTION = "function"
+IF = "if"
+INT = "int"
+LET = "let"
+METHOD = "method"
+NULL = "null"
+RETURN = "return"
+STATIC = "static"
+THIS = "this"
+TRUE = "true"
+VAR = "var"
+VOID = "void"
+WHILE = "while"
+
+KEYWORD = "keyword"
+SYMBOL = "symbol"
+INTEGER = "integer"
+STRING = "string"
+IDENTIFIER = "id"
+TOKEN = "token"
+
+
+KEYWORDS = set((
+    CLASS, CONSTRUCTOR, FUNCTION, METHOD, FIELD, STATIC, VAR,
+    INT, CHAR, BOOLEAN, VOID, TRUE, FALSE, NULL,
+    THIS, LET, DO, IF, ELSE, WHILE, RETURN
+))
+
+OPS = ("+" , "-" , "*" , "/" , "&", "|", "<" , ">" , "=")
+
+UNARY_OPS = ("-", "~")
+
+SYMBOLS = set(((
+    "{", "}", "(", ")", "[", "]",
+    ".", ";", ",",
+    ) + OPS + UNARY_OPS
+))
+
+_RE_KEYWORD    = r"|".join(KEYWORDS)
+_RE_SYMBOL     = "|".join(map(re.escape, SYMBOLS))
+_RE_INTEGER    = r"\d+"
+_RE_STRING     = r"\"[^\"\n]*\""
+_RE_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*"
+_RE_TOKEN      = r"|".join(
+    [_RE_KEYWORD, _RE_SYMBOL, _RE_INTEGER, _RE_STRING, _RE_IDENTIFIER]
+)
+
+RE_COMMENT           = re.compile(r"{0}[^\n]*\n".format(COMMENT_SYMBOL))
+RE_MULTILINE_COMMENT = re.compile(r"/\*(.*?)\*/", re.MULTILINE | re.DOTALL)
+RE_KEYWORD           = re.compile(_RE_KEYWORD)
+RE_SYMBOL            = re.compile(_RE_SYMBOL)
+RE_INTEGER           = re.compile(_RE_INTEGER)
+RE_STRING            = re.compile(_RE_STRING)
+RE_IDENTIFIER        = re.compile(_RE_IDENTIFIER)
+RE_TOKEN             = re.compile(_RE_TOKEN)
+
+
+TOKENS = {
+    COMMENT:           RE_COMMENT,
+    MULTILINE_COMMENT: RE_MULTILINE_COMMENT,
+    KEYWORD:           RE_KEYWORD,
+    SYMBOL:            RE_SYMBOL,
+    INTEGER:           RE_INTEGER,
+    STRING:            RE_STRING,
+    IDENTIFIER:        RE_IDENTIFIER,
+    TOKEN:             RE_TOKEN,  # for check that lexem belongs to JACK lang
+}
+
+
+class Token(object):
+    def __init__(self, type_, value):
+        self._type = type_
+        self.value = value
+
+    def to_xml(self):
+        return "<{type}> {value} </{type}>".format(
+            type=self._type, value=saxutils.escape(self.value))
+
+    __str__ = to_xml
+
+
+class Keyword(Token):
+    def __init__(self, value):
+        if not value in KEYWORDS:
+            raise ValueError()
+        super(Keyword, self).__init__("keyword", value)
+
+
+class Symbol(Token):
+    def __init__(self, value):
+        if not value in SYMBOLS:
+            raise Exception()
+        super(Symbol, self).__init__("symbol", value)
+
+
+class Integer(Token):
+    def __init__(self, value):
+        if not (0 <= int(value) <= (2 ** 15 - 1)):
+            raise Exception()
+        super(Integer, self).__init__("integerConstant", value)
+
+
+class String(Token):
+    def __init__(self, value):
+        if not (value[0] == '"' and value[1] == '"'):
+            raise Exception()
+        super(String, self).__init__("stringConstant", value)
+
+
+class Identifier(Token):
+    def __init__(self, value):
+        super(Identifier, self).__init__("identifier", value)
+
+
+def is_type(token, source):
+    """Check token class.
+
+    :param str token: token class
+    :param str source: line of code
+
+    :return: re or None
+    """
+    return TOKENS[token].match(source)
+
+
+def strip_comments(sources):
+    """Strip comments.
+
+    :param str sources: raw jack code
+
+    :return str: stripped sources without comments
+    """
+
+    logging.info("Stripping comments -->")
+    sources = RE_COMMENT.sub("", sources)
+    sources = RE_MULTILINE_COMMENT.sub("", sources)
+    logging.info("Stripping comments <--")
+    logging.debug("Stripped sources: \n%s", sources)
+    return sources
+
+
+def tokenize_line(source):
+    errors = 0
+
+    for leftover in TOKENS[TOKEN].split(source):
+        if leftover.strip():
+            errors += 1
+            logging.error("Lexem doesn't belong to JACK: %s", leftover)
+    if errors != 0:
+        logging.fatal("Total errors: %s", errors)
+        raise UnknownTokenError(leftover)
+
+    for token in TOKENS[TOKEN].findall(source):
+        if is_type(KEYWORD, token):
+            yield Keyword(token)
+        elif is_type(SYMBOL, token):
+            yield Symbol(token)
+        elif is_type(INTEGER, token):
+            yield Integer(token)
+        elif is_type(STRING, token):
+            yield String(token)
+        elif is_type(IDENTIFIER, token):
+            yield Identifier(token)
+        else:
+            raise UnknownTokenError(leftover)
+    
+
+def tokenize(sources):
+    tokens = []
+    for line in strip_comments(sources).splitlines():
+        tokens.extend(tokenize_line(line))
+    return tokens
+
+def tokens_to_xml(tokens):
+    return (
+        "<tokens>\n" +
+        os.linesep.join(map(Token.to_xml, tokens)) +
+        "\n</tokens>\n"
+    )
+
+# <-- TOKENIZER
+
+# --> PARSER
+
+def parse(tokens):
+    return tokens
+
+# <-- PARSER
+
+
+def parse_args():
+    """Parse and return incoming arguments.
+
+    :return: parsed arguments
+    :rtype: argparse.Namespace
+    """
+    parser = argparse.ArgumentParser(description="JACK VM translator")
+    parser.add_argument("-d", "--debug", action="store_true", help="Debug mode")
+    parser.add_argument("-o", "--output", help="output file")
+    parser.add_argument(
+        "-m", "--outmode", default="xml", choices=("xml", "vm"),
+        help="Output mode")
+    parser.add_argument("filename", help="input file")
+
+    return parser.parse_args()
+
+
+def main():
+    """Main entry point."""
+
+    def chext(filepath, ext):
+        path, name = os.path.split(filepath)
+        return os.path.join(path, os.path.splitext(name)[0] + ext)
+    
+    global DEBUG
+    global FILENAME
+
+    args = parse_args()
+    DEBUG = args.debug
+    
+    logging.getLogger().setLevel(logging.DEBUG if DEBUG else logging.INFO)
+    logging.debug("Incoming args: %s", args)
+
+    if os.path.isdir(args.filename):
+        logging.debug("Compiling directory: %s", args.filename)
+        inputs = glob.glob(os.path.join(args.filename, "*jack"))
+    else:
+        inputs = [args.filename]
+
+    for filename in inputs:
+        logging.debug("Compiling file: %s", filename)
+        with open(filename) as source:
+            tokens = tokenize(source.read())
+            parsed = parse(tokens)
+            if args.outmode == "xml":
+                tokens = tokens_to_xml(tokens)
+
+        logging.debug(tokens)
+        logging.debug(parsed)
+
+        with open(chext(filename, ".{0}".format(args.outmode)), "w") as target:
+            target.write(tokens)
+
+
+if __name__ == "__main__":
+    main()

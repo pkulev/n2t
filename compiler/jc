@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-"""JACK VM translator to HACK assembler.
+"""JACK Compiler.
 
-Translates JACK Virtual Machine language to HACK assembly language.
+Compiles JACK language to JACK VM language.
 """
 
 import argparse
@@ -27,7 +27,7 @@ FILENAME = None
 # --> TOKENIZER
 
 class SyntaxError(Exception):
-    """Base class for VM->ASM translation exceptions."""
+    """Base class for Jack->VM compilation exceptions."""
 
     def __init__(self, msg):
         super(SyntaxError, self).__init__(msg)
@@ -202,7 +202,6 @@ def strip_comments(sources):
     sources = RE_COMMENT.sub("", sources)
     sources = RE_MULTILINE_COMMENT.sub("", sources)
     logging.info("Stripping comments <--")
-    logging.debug("Stripped sources: \n%s", sources)
     return sources
 
 

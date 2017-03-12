@@ -7,6 +7,7 @@ Translates JACK Virtual Machine language to HACK assembly language.
 
 import argparse
 from collections import namedtuple
+import contextlib
 import functools
 import glob
 import itertools
@@ -38,7 +39,14 @@ class UnknownTokenError(SyntaxError):
     #def __init__(self, lineno, instruction, args):
     def __init__(self, token):
         super(UnknownTokenError, self).__init__(
-            "Unknown token: %s".format(token))
+            "Unknown token: {0}".format(token))
+
+class TokenNotExpected(SyntaxError):
+    """Wrong place for this token."""
+
+    def __init__(self, allowed):
+        super(TokenNotExpected, self).__init__(
+            "Only next tokens allowed here: {0}".format(allowed))
 
 
 COMMENT_SYMBOL = "//"
@@ -128,6 +136,9 @@ class Token(object):
         self._type = type_
         self.value = value
 
+    def check(self, allowed):
+        return self.value in allowed
+
     def to_xml(self):
         return "<{type}> {value} </{type}>".format(
             type=self._type, value=saxutils.escape(self.value))
@@ -158,9 +169,9 @@ class Integer(Token):
 
 class String(Token):
     def __init__(self, value):
-        if not (value[0] == '"' and value[1] == '"'):
+        if not (value[0] == '"' and value[-1] == '"'):
             raise Exception()
-        super(String, self).__init__("stringConstant", value)
+        super(String, self).__init__("stringConstant", value[1:-1])
 
 
 class Identifier(Token):
@@ -267,13 +278,13 @@ def main():
     def chext(filepath, ext):
         path, name = os.path.split(filepath)
         return os.path.join(path, os.path.splitext(name)[0] + ext)
-    
+
     global DEBUG
     global FILENAME
 
     args = parse_args()
     DEBUG = args.debug
-    
+
     logging.getLogger().setLevel(logging.DEBUG if DEBUG else logging.INFO)
     logging.debug("Incoming args: %s", args)
 
@@ -291,11 +302,8 @@ def main():
             if args.outmode == "xml":
                 tokens = tokens_to_xml(tokens)
 
-        logging.debug(tokens)
-        logging.debug(parsed)
-
         with open(chext(filename, ".{0}".format(args.outmode)), "w") as target:
-            target.write(tokens)
+            target.write(parsed)
 
 
 if __name__ == "__main__":

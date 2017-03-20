@@ -17,13 +17,6 @@ import re
 from xml.sax import saxutils
 
 
-DEBUG = False
-"""Debug mode."""
-
-FILENAME = None
-"""Current file name for translation."""
-
-
 # --> TOKENIZER
 
 class SyntaxError(Exception):
@@ -54,34 +47,34 @@ COMMENT_SYMBOL = "//"
 COMMENT           = "commentary"
 MULTILINE_COMMENT = "multiline commentary"
 
-BOOLEAN = "boolean"
-CHAR = "char"
-CLASS = "class"
+BOOLEAN     = "boolean"
+CHAR        = "char"
+CLASS       = "class"
 CONSTRUCTOR = "constructor"
-DO = "do"
-ELSE = "else"
-FALSE = "false"
-FIELD = "field"
-FUNCTION = "function"
-IF = "if"
-INT = "int"
-LET = "let"
-METHOD = "method"
-NULL = "null"
-RETURN = "return"
-STATIC = "static"
-THIS = "this"
-TRUE = "true"
-VAR = "var"
-VOID = "void"
-WHILE = "while"
+DO          = "do"
+ELSE        = "else"
+FALSE       = "false"
+FIELD       = "field"
+FUNCTION    = "function"
+IF          = "if"
+INT         = "int"
+LET         = "let"
+METHOD      = "method"
+NULL        = "null"
+RETURN      = "return"
+STATIC      = "static"
+THIS        = "this"
+TRUE        = "true"
+VAR         = "var"
+VOID        = "void"
+WHILE       = "while"
 
-KEYWORD = "keyword"
-SYMBOL = "symbol"
-INTEGER = "integer"
-STRING = "string"
+KEYWORD    = "keyword"
+SYMBOL     = "symbol"
+INTEGER    = "integer"
+STRING     = "string"
 IDENTIFIER = "id"
-TOKEN = "token"
+TOKEN      = "token"
 
 
 KEYWORDS = set((
@@ -229,7 +222,7 @@ def tokenize_line(source):
             yield Identifier(token)
         else:
             raise UnknownTokenError(leftover)
-    
+
 
 def tokenize(sources):
     tokens = []
@@ -588,13 +581,10 @@ def main():
         path, name = os.path.split(filepath)
         return os.path.join(path, os.path.splitext(name)[0] + ext)
 
-    global DEBUG
-    global FILENAME
-
     args = parse_args()
-    DEBUG = args.debug
+    debug = args.debug
 
-    logging.getLogger().setLevel(logging.DEBUG if DEBUG else logging.INFO)
+    logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
     logging.debug("Incoming args: %s", args)
 
     if os.path.isdir(args.filename):

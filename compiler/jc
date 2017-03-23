@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """JACK Compiler.
 
@@ -567,7 +567,7 @@ def parse_args():
     parser.add_argument("-d", "--debug", action="store_true", help="Debug mode")
     parser.add_argument("-o", "--output", help="output file")
     parser.add_argument(
-        "-m", "--outmode", default="xml", choices=("xml", "vm"),
+        "-m", "--outmode", default="vm", choices=("xml", "vm"),
         help="Output mode")
     parser.add_argument("filename", help="input file")
 
@@ -597,12 +597,10 @@ def main():
         logging.debug("Compiling file: %s", filename)
         with open(filename) as source:
             tokens = tokenize(source.read())
-            parsed = parse(tokens)
-            if args.outmode == "xml":
-                tokens = tokens_to_xml(tokens)
+            bytecode = compile_bytecode(tokens, args.outmode)
 
         with open(chext(filename, ".{0}".format(args.outmode)), "w") as target:
-            target.write(parsed)
+            target.write(bytecode)
 
 
 if __name__ == "__main__":

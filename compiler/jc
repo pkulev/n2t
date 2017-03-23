@@ -75,6 +75,7 @@ INTEGER    = "integer"
 STRING     = "string"
 IDENTIFIER = "id"
 TOKEN      = "token"
+ARGUMENT   = "argument"
 
 
 KEYWORDS = set((
@@ -241,8 +242,279 @@ def tokens_to_xml(tokens):
 
 # --> PARSER
 
-def parse(tokens):
-    return CompilerEngine(tokens).process()
+
+SymbolItem = namedtuple("SymbolItem", ["name", "type", "kind", "idx"])
+
+
+class ScopedSymbolTable(object):
+
+    def __init__(self, scope, allowed_kinds):
+        self._scope = scope
+        self._allowed_kinds = allowed_kinds
+
+        self._table = {}
+        self._counters = {kind: 0 for kind in allowed_kinds}
+
+    def define(self, name, typ, kind):
+
+        if kind not in self._allowed_kinds:
+            raise Exception(
+                "No kind '{0}' allowed. Allowed: {1}.".format(
+                    kind, self._allowed_kinds))
+
+        if name in self._table:
+            raise Exception(
+                "Such identifier already exists in symtable: '{0}'.".format(
+                    name))
+
+        self._table[name] = SymbolItem(name, typ, kind, self._counters[kind])
+        self._counters[kind] += 1
+
+    @property
+    def scope(self):
+        return self._scope
+
+    def __getitem__(self, name):
+        return self._table.get(name)
+
+
+
+class SubroutineSymbolTable(ScopedSymbolTable):
+
+    def __init__(self, name):
+        super(SubroutineSymbolTable, self).__init__(name, [VAR, ARGUMENT])
+
+
+class ClassSymbolTable(ScopedSymbolTable):
+
+    def __init__(self, name):
+        super(ClassSymbolTable, self).__init__(name, [FIELD, STATIC])
+
+
+class SymbolTable(object):
+
+    def __init__(self):
+        self._classes = {}
+        self._cur_class = None
+        self._cur_sub = None
+        self._sub_type = None
+
+    def mangle_name(self, subname, classname=None):
+        if classname is None:
+            classname = self._cur_class.scope
+        return "{0}.{1}".format(classname, subname)
+
+    def class_scope(self, name):
+        if name in self._classes:
+            raise Error("Class redefinition: '{0}'".format(name))
+
+        class_scope = ClassSymbolTable(name)
+        self._classes[name] = class_scope
+        self._cur_class = class_scope
+        self._cur_sub = None
+        self._sub_type = None
+        return name
+
+    def subroutine_scope(self, name, typ):
+        sub_scope = SubroutineSymbolTable(name)
+        self._cur_sub = sub_scope
+        self._sub_type = typ
+        return self.mangle_name(name)
+
+    def __getitem__(self, name):
+        if not self._cur_class:
+            raise Exception("Out of class scope.")
+
+        symbol = None
+
+        if self._cur_sub:
+            symbol = self._cur_sub[name]
+
+        if symbol is None:
+            symbol = self._cur_class[name]
+
+        if (
+                symbol is not None and self._sub_type == METHOD and
+                symbol.kind == ARGUMENT
+        ):
+            symbol = symbol._replace(index=symbol.idx + 1)
+
+        if symbol is not None and self._sub_type == FUNCTION:
+            if symbol.kind == FIELD:
+                raise Exception("Can't use field variables in function.")
+
+        return symbol
+
+    def define(self, name, typ, kind):
+        if self._cur_sub:
+            self._cur_sub.define(name, typ, kind)
+        elif self._cur_class:
+            self._cur_class.define(name, typ, kind)
+        else:
+            raise Exception("No current scope for '%s'.".format(name))
+
+
+WHILE_EXP = "WHILE::EXP{0}"
+WHILE_END = "WHILE::END{0}"
+IF_TRUE   = "IF::TRUE{0}"
+IF_ELSE   = "IF::FALSE{0}"
+IF_END    = "IF::END{0}"
+
+
+class Bytecode(object):
+
+    def __init__(self):
+        self._bytecode = []
+        self._while_idx = 0
+        self._if_idx = 0
+
+    def _vm(self, *lines):
+        self._bytecode.extend(lines)
+
+    def dump(self):
+        return os.linesep.join(self._bytecode)
+
+    def write_function_declaration(self, name, nlocals):
+        self._if_idx = 0
+        self._while_idx = 0
+        self._vm("function {0} {1}".format(name, nlocals))
+
+    def write_constructor(self, nfields):
+        """Allocate memory for object fields."""
+
+        self.write_push("constant", nfields)
+        self.write_method_call("Memory.alloc", 1)
+        self.write_pop("pointer", 0)
+
+    def write_method_declaration(self):
+        self.write_push("argument", 0)
+        self.write_pop("pointer", 0)
+
+    def write_method_call(self, name, nargs):
+        self._vm("call {0} {1}".format(name, nargs))
+
+
+    def write_push(self, segment, idx):
+        self._vm("push {0} {1}".format(segment, idx))
+
+    def write_pop(self, segment, idx):
+        self._vm("pop {0} {1}".format(segment, idx))
+
+    def write_return(self):
+        self._vm("return")
+
+    def write_binary_operation(self, symbol):
+        commands = {
+            "+": "add",
+            "*": "call Math.multiply 2",
+            "-": "sub",
+            "/": "call Math.divide 2",
+            "&": "and",
+            "<": "lt",
+            ">": "gt",
+            "=": "eq",
+            "|": "or",
+        }
+        self._vm(commands[symbol])
+
+    def write_unary_operation(self, symbol):
+        commands = {
+            "-": "neg",
+            "~": "not"
+        }
+        self._vm(commands[symbol])
+
+    def write_push_symbol(self, symbol):
+        self.write_push(self.symbol_segment(symbol.kind), symbol.idx)
+
+    def write_pop_symbol(self, symbol):
+        self.write_pop(self.symbol_segment(symbol.kind), symbol.idx)
+
+    def symbol_segment(self, kind):
+        kinds = {
+            VAR: "local",
+            ARGUMENT: "argument",
+            FIELD: "this",
+            STATIC: "static",
+        }
+        return kinds[kind]
+
+    def write_constant(self, value):
+        if value == TRUE:
+            self.write_push("constant", 0)
+            self._vm("not")
+        elif value == FALSE:
+            self.write_push("constant", 0)
+        elif value == THIS:
+            self.write_push("pointer", 0)
+        elif value == NULL:
+            self.write_push("constant", 0)
+        else:
+            raise ValueError(value)
+
+    def write_label(self, label):
+        self._vm("label {0}".format(label))
+
+    def write_if_goto(self, label):
+        self._vm("if-goto {0}".format(label))
+
+    def write_goto(self, label):
+        self._vm("goto {0}".format(label))
+
+    def write_while_declaration_start(self):
+        self.write_label(WHILE_EXP.format(self._while_idx))
+        self._while_idx += 1
+        return self._while_idx - 1
+
+    def write_while_declaration_end(self, idx):
+        self._vm("not")
+        self.write_if_goto(WHILE_END.format(idx))
+
+    def write_while_end(self, idx):
+        self.write_goto(WHILE_EXP.format(idx))
+        self.write_label(WHILE_END.format(idx))
+
+    def write_if_start(self):
+        self.write_if_goto(IF_TRUE.format(self._if_idx))
+        self.write_goto(IF_ELSE.format(self._if_idx))
+        self.write_label(IF_TRUE.format(self._if_idx))
+        self._if_idx += 1
+        return self._if_idx - 1
+
+    def write_else(self, idx):
+        self.write_goto(IF_END.format(idx))
+        self.write_label(IF_ELSE.format(idx))
+
+    def write_if_end(self, idx, is_else):
+        if is_else:
+            self.write_label(IF_END.format(idx))
+        else:
+            self.write_label(IF_ELSE.format(idx))
+
+    def write_string(self, string):
+        """Allocate string and create it via OS."""
+
+        self.write_push("constant", len(string))
+        self.write_method_call("String.new", 1)
+        for char in string:
+            self.write_push("constant", ord(char))
+            self.write_method_call("String.appendChar", 2)
+
+    def write_array_assignment(self):
+        self.write_pop("temp", 0)
+        self.write_pop("pointer", 1)
+        self.write_push("temp", 0)
+        self.write_pop("that", 0)
+
+    def write_array_subscription(self, symbol):
+        self.write_push_symbol(symbol)
+        self.write_binary_operation("+")
+        self.write_pop("pointer", 1)
+        self.write_push("that", 0)
+
+
+def compile_bytecode(tokens, mode):
+    return CompilerEngine(tokens).process(mode)
 
 
 def check_token(token, type_, *allowed):
@@ -269,15 +541,20 @@ class CompilerEngine(object):
     def __init__(self, tokens):
         self._tokens = tokens
 
+        self._symtable = SymbolTable()
         self._xml_out = ""
+        self._bytecode = Bytecode()
         self._indent = 0
         self._pos = 0
 
-    def process(self):
+    def process(self, mode):
         self._process_class_declaration()
         if self._pos != len(self._tokens):
             raise SyntaxError("There are leftovers")
-        return self._xml_out
+        if mode == "xml":
+            return self._xml_out
+        elif mode == "vm":
+            return self._bytecode.dump()
 
     def _xml(self, node):
         indent = "  " * self._indent
@@ -306,17 +583,27 @@ class CompilerEngine(object):
     def _next_keyword(self, *allowed):
         if not self._check_next(Keyword, *allowed):
             raise TokenNotExpected(repr(allowed))
-        self._write_token(self._next_token())
+        token = self._next_token()
+        self._write_token(token)
+        return token.value
 
     def _next_symbol(self, *allowed):
         if not self._check_next(Symbol, *allowed):
             raise TokenNotExpected(repr(allowed))
-        self._write_token(self._next_token())
+        token = self._next_token()
+        self._write_token(token)
+        return token.value
 
     def _next_identifier(self, *allowed):
         if not self._check_next(Identifier, *allowed):
             raise TokenNotExpected(repr(allowed))
-        self._write_token(self._next_token())
+        token = self._next_token()
+        self._write_token(token)
+        return token.value
+
+    def _next_symbol_declaration(self, typ, kind):
+        identifier = self._next_identifier()
+        self._symtable.define(identifier, typ, kind)
 
     def _next_type(self, *allowed):
         token = self._next_token()
@@ -328,49 +615,62 @@ class CompilerEngine(object):
     def _process_class_declaration(self):
         with self._rule("class"):
             self._next_keyword(CLASS)
-            self._next_identifier()
+            classname = self._next_identifier()
+            self._symtable.class_scope(classname)
             self._next_symbol("{")
-            self._next_class_variable_declarations()
-            self._next_subroutine_declarations()
+            nfields = self._next_class_variable_declarations()
+            self._next_subroutine_declarations(nfields)
             self._next_symbol("}")
 
     def _next_class_variable_declarations(self):
+        count = 0
         while self._check_next(Keyword, FIELD, STATIC):
-            self._next_class_variable_declaration()
+            if self._check_next(Keyword, FIELD):
+                count += self._next_class_variable_declaration()
+            else:
+                self._next_class_variable_declaration()
+        return count
 
     def _next_class_variable_declaration(self):
         with self._rule("classVarDec"):
-            self._next_keyword(STATIC, FIELD)
-            self._next_variable_declaration()
+            kind = self._next_keyword(STATIC, FIELD)
+            return self._next_variable_declaration()
 
-    def _next_variable_declaration(self):
-        self._next_type()
-        self._next_identifier()
+    def _next_variable_declaration(self, kind):
+        typ = self._next_type()
+        identifier = self._next_identifier()
+
+        self._symtable.define(identifier, typ, kind)
+        var_count = 1
 
         while not self._check_next(Symbol, ";"):
+            var_count += 1
             self._next_symbol(",")
-            self._next_identifier()
+            identifier = self._next_identifier()
+            self._symtable.define(identifier, typ, kind)
 
         self._next_symbol(";")
+        return var_count
 
-    def _next_subroutine_declarations(self):
+    def _next_subroutine_declarations(self, nfields=None):
         while self._check_next(Keyword, CONSTRUCTOR, FUNCTION, METHOD):
-            self._next_subroutine_declaration()
+            self._next_subroutine_declaration(nfields)
 
-    def _next_subroutine_declaration(self):
+    def _next_subroutine_declaration(self, nfields):
         with self._rule("subroutineDec"):
-            self._next_keyword(CONSTRUCTOR, FUNCTION, METHOD)
+            sub_type = self._next_keyword(CONSTRUCTOR, FUNCTION, METHOD)
 
             if self._check_next(Keyword, VOID):
                 self._next_keyword(VOID)
             else:
                 self._next_type()
 
-            self._next_identifier()
+            identifier = self._next_identifier()
+            fname = self._symtable.subroutine_scope(identifier, sub_type)
             self._next_symbol("(")
             self._next_plist()
             self._next_symbol(")")
-            self._next_subroutine_body()
+            self._next_subroutine_body(fname, sub_type, nfields)
 
     def _next_plist(self):
         with self._rule("parameterList"):
@@ -381,14 +681,21 @@ class CompilerEngine(object):
                 else:
                     self._next_symbol(",")
 
-                self._next_type()
-                self._next_identifier()
+                typ = self._next_type()
+                identifier = self._next_identifier()
+                self._symtable.define(identifier, typ, ARGUMENT)
 
-    def _next_subroutine_body(self):
+    def _next_subroutine_body(self, fname, sub_type, nfields=None):
         with self._rule("subroutineBody"):
             self._next_symbol("{")
+            nvars = 0
             while self._check_next(Keyword, VAR):
-                self._next_subroutine_var_declaration()
+                nvars += self._next_subroutine_var_declaration()
+            self._bytecode.write_function_declaration(fname, nvars)
+            if sub_type == CONSTRUCTOR:
+                self._bytecode.write_constructor(nfields)
+            elif sub_type == METHOD:
+                self._bytecode.write_method_declaration()
 
             self._next_statements()
             self._next_symbol("}")
@@ -396,7 +703,7 @@ class CompilerEngine(object):
     def _next_subroutine_var_declaration(self):
         with self._rule("varDec"):
             self._next_keyword(VAR)
-            self._next_variable_declaration()
+            return self._next_variable_declaration(VAR)
 
     def _next_statements(self):
         with self._rule("statements"):
@@ -418,17 +725,27 @@ class CompilerEngine(object):
     def _next_let_statement(self):
         with self._rule("letStatement"):
             self._next_keyword(LET)
-            self._next_identifier()
+            identifier = self._next_identifier()
+            symbol = self._symtable[identifier]
 
             # Array subscription
+            is_array = False
             if self._check_next(Symbol, "["):
+                is_array = True
                 self._next_symbol("[")
                 self._next_expression()
                 self._next_symbol("]")
+                self._bytecode.write_push_symbol(symbol)
+                self._bytecode.write_binary_operation("+")
 
             self._next_symbol("=")
             self._next_expression()
             self._next_symbol(";")
+
+            if is_array:
+                self._bytecode.write_array_assignment()
+            else:
+                self._bytecode.write_pop_symbol(symbol)
 
     def _next_if_statement(self):
         with self._rule("ifStatement"):
@@ -436,41 +753,67 @@ class CompilerEngine(object):
             self._next_symbol("(")
             self._next_expression()
             self._next_symbol(")")
+            if_idx = self._bytecode.write_if_start()
             self._next_symbol("{")
             self._next_statements()
             self._next_symbol("}")
 
             # Else branch
             if self._check_next(Keyword, ELSE):
+                self._bytecode.write_else(if_idx)
                 self._next_keyword(ELSE)
                 self._next_symbol("{")
                 self._next_statements()
                 self._next_symbol("}")
+                self._bytecode.write_if_end(if_idx, True)
+            else:
+                self._bytecode.write_if_end(if_idx, False)
 
     def _next_while_statement(self):
         with self._rule("whileStatement"):
             self._next_keyword(WHILE)
+            while_idx = self._bytecode.write_while_declaration_start()
             self._next_symbol("(")
             self._next_expression()
             self._next_symbol(")")
+            self._bytecode.write_while_declaration_end(while_idx)
             self._next_symbol("{")
             self._next_statements()
             self._next_symbol("}")
+            self._bytecode.write_while_end(while_idx)
 
     def _next_do_statement(self):
         with self._rule("doStatement"):
             self._next_keyword(DO)
             self._next_subroutine_call()
             self._next_symbol(";")
+            self._bytecode.write_pop("temp", 0)
 
     def _next_subroutine_call(self):
-        self._next_identifier()
+        first_id = self._next_identifier()
+        is_method = False
+
         if self._check_next(Symbol, "."):
             self._next_symbol(".")
-            self._next_identifier()
+            second_id = self._next_identifier()
+            symbol = self._symtable[first_id]
+            if symbol:
+                fname = self._symtable.mangle_name(second_id, symbol.type)
+                self._bytecode.write_push_symbol(symbol)
+                is_method = True
+            else:
+                fname = self._symtable.mangle_name(second_id, first_id)
+        else:
+            fname = self._symtable.mangle_name(first_id)
+            self._bytecode.write_push("pointer", 0)
+            is_method = True
 
         self._next_symbol("(")
-        self._next_expression_list()
+        nargs = self._next_expression_list()
+        if is_method:
+            self._bytecode.write_method_call(fname, nargs + 1)
+        else:
+            self._bytecode.write_method_call(fname, nargs)
         self._next_symbol(")")
 
     def _next_return_statement(self):
@@ -478,44 +821,60 @@ class CompilerEngine(object):
             self._next_keyword(RETURN)
             if not self._check_next(Symbol, ";"):
                 self._next_expression()
+            else:
+                self._bytecode.write_push("constant", 0)
             self._next_symbol(";")
+            self._bytecode.write_return()
 
     def _next_expression(self):
         with self._rule("expression"):
             self._expand_term()
 
             if self._check_next(Symbol, *tuple(OPS)):
-                self._next_symbol(*tuple(OPS))
+                op = self._next_symbol(*tuple(OPS))
                 self._expand_term()
+                self._bytecode.write_binary_operation(op)
 
     def _next_expression_list(self):
         with self._rule("expressionList"):
-            first = True
+
+            exp_count = 0
             while not self._check_next(Symbol, ")"):
-                if first:
-                    first = False
-                else:
+                if exp_count:
                     self._next_symbol(",")
+                exp_count += 1
                 self._next_expression()
+            return exp_count
 
     def _expand_term(self):
         with self._rule("term"):
             token = self._next_token()
 
             # integer or string constant
-            if isinstance(token, (Integer, String)):
-                return self._write_token(token)
+            if isinstance(token, Integer):
+                self._write_token(token)
+                self._bytecode.write_push("constant", token.value)
+                return
+
+            elif isinstance(token, String):
+                self._write_token(token)
+                self._bytecode.write_string(token.value)
+                return
 
             # keyword constants
             elif isinstance(token, Keyword):
-                return self._next_keyword(TRUE, FALSE, NULL, THIS)
+                value = self._next_keyword(TRUE, FALSE, NULL, THIS)
+                self._bytecode.write_constant(value)
+                return
 
             # array subscription
             elif self._look_ahead_array_subscr():
-                self._next_identifier()
+                identifier = self._next_identifier()
+                symbol = self._symtable[identifier]
                 self._next_symbol("[")
                 self._next_expression()
                 self._next_symbol("]")
+                self._bytecode.write_array_subscription(symbol)
 
             # subroutine call
             elif self._look_ahead_subroutine_call():
@@ -523,7 +882,9 @@ class CompilerEngine(object):
 
             # variable
             elif isinstance(token, Identifier):
-                self._next_identifier()
+                identifier = self._next_identifier()
+                symbol = self._symtable[identifier]
+                self._bytecode.write_push_symbol(symbol)
 
             # (expression)
             elif self._check_next(Symbol, "("):
@@ -533,8 +894,9 @@ class CompilerEngine(object):
 
             # unary operations
             elif self._check_next(Symbol, *tuple(UNARY_OPS)):
-                self._next_symbol(*tuple(UNARY_OPS))
+                op = self._next_symbol(*tuple(UNARY_OPS))
                 self._expand_term()
+                self._bytecode.write_unary_operation(op)
 
             else:
                 raise UnknownTokenError("token totally unexpected")
